@@ -659,3 +659,198 @@ input[type="checkbox"].chk-voucher {
     border: 1px solid #ccc;
   }
 }
+
+
+/* Responsive polish inspired by the reference screenshot */
+.topbar {
+  padding: 20px clamp(16px, 3vw, 40px);
+}
+.topbar-inner, .navbar-inner {
+  max-width: 1600px;
+}
+.brand h1 {
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+}
+.subtitle {
+  font-size: 0.95rem;
+}
+.controls {
+  gap: 10px;
+}
+.btn, .btn-add-month {
+  min-height: 42px;
+}
+.container {
+  max-width: 1600px;
+  margin-top: 30px;
+}
+.month-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.48fr);
+  gap: 28px;
+}
+.card {
+  border-radius: 16px;
+}
+.card-header {
+  padding: 20px 24px;
+}
+.card-header h2 {
+  font-size: clamp(1.12rem, 1.5vw, 1.35rem);
+}
+th, td {
+  padding: 12px 14px;
+}
+th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+}
+input[type="checkbox"].chk-pay {
+  accent-color: var(--red);
+}
+input[type="checkbox"].chk-voucher {
+  accent-color: var(--purple);
+}
+.tab-btn, .btn-add-month {
+  min-height: 42px;
+  padding-inline: 16px;
+}
+.rate-pill {
+  min-height: 46px;
+  padding: 7px 12px;
+}
+.rate-pill input {
+  min-height: 34px;
+  width: 78px;
+  padding: 5px 8px;
+}
+.paid-input-row {
+  align-items: stretch;
+}
+.paid-input-row input {
+  min-width: 0;
+}
+.summary-row {
+  gap: 12px;
+}
+.summary-row strong {
+  text-align: right;
+  flex-shrink: 0;
+}
+@media (max-width: 1100px) {
+  .topbar-inner {
+    align-items: flex-start;
+  }
+  .controls {
+    width: 100%;
+  }
+  .month-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 0.7fr);
+    gap: 18px;
+  }
+  .container {
+    padding-inline: 18px;
+  }
+}
+@media (max-width: 760px) {
+  .topbar {
+    padding: 18px 16px;
+  }
+  .topbar-inner {
+    gap: 18px;
+  }
+  .brand {
+    align-items: flex-start;
+  }
+  .brand h1 {
+    font-size: 1.2rem;
+    line-height: 1.25;
+  }
+  .subtitle {
+    margin-top: 4px;
+    font-size: 0.82rem;
+  }
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .rate-pill {
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 0.78rem;
+  }
+  .rate-pill input {
+    width: 66px;
+  }
+  .controls .btn {
+    justify-content: center;
+    padding-inline: 8px;
+    font-size: 0.8rem;
+  }
+  .navbar-inner {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+  .tabs-scroll {
+    gap: 6px;
+  }
+  .tab-btn, .btn-add-month {
+    min-height: 40px;
+    padding: 7px 12px;
+    font-size: 0.8rem;
+  }
+  .container {
+    margin-top: 18px;
+    padding-inline: 12px;
+  }
+  .month-layout {
+    grid-template-columns: 1fr;
+  }
+  .sidebar-sticky {
+    position: static;
+  }
+  .card {
+    margin-bottom: 16px;
+    border-radius: 13px;
+  }
+  .card-header {
+    padding: 16px;
+  }
+  .card-header h2 {
+    font-size: 1.05rem;
+  }
+  th, td {
+    padding: 10px 9px;
+    white-space: nowrap;
+  }
+  .table-wrap {
+    overscroll-behavior-x: contain;
+  }
+  .paid-input-row {
+    flex-wrap: wrap;
+  }
+  .paid-input-row input, .btn-settle {
+    min-height: 42px;
+  }
+}
+@media (max-width: 420px) {
+  .controls {
+    grid-template-columns: 1fr;
+  }
+  .rate-pill {
+    justify-content: flex-start;
+  }
+  .rate-pill input {
+    margin-left: auto;
+  }
+  .btn-add-month {
+    padding-inline: 10px;
+    font-size: 0.74rem;
+  }
+}
