@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestione Conteggio Mensa & Buoni Pasto</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="logo-box">🍽️</div>
+        <div>
+          <h1>Gestione Mensa &amp; Buoni Pasto</h1>
+          <p class="subtitle">Conteggio mensile automatico, saldi e buono pasto separati</p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="rate-pill">
+          <label for="mealPrice">Costo Pasto (€)</label>
+          <input type="number" id="mealPrice" step="0.01" min="0" value="3.10">
+        </div>
+        <div class="rate-pill voucher">
+          <label for="voucherPrice">Valore Buono (€)</label>
+          <input type="number" id="voucherPrice" step="0.01" min="0" value="3.10">
+        </div>
+        <button type="button" class="btn btn-excel" id="btnExportCsv">📊 Esporta Excel</button>
+        <button type="button" class="btn btn-backup" id="btnBackupJson">💾 Backup</button>
+        <button type="button" class="btn btn-restore" id="btnRestoreJson">📂 Ripristina</button>
+        <input type="file" id="restoreFileInput" accept=".json" style="display:none;">
+        <button type="button" class="btn btn-print" onclick="window.print()">🖨️ Stampa</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <div class="tabs-scroll" id="tabsContainer"></div>
+      <button type="button" class="btn-add-month" id="btnOpenModal">+ Aggiungi Mese</button>
+    </div>
+  </nav>
+
+  <main class="container" id="appRoot"></main>
+
+  <!-- Modale Aggiungi Mese -->
+  <div class="modal-backdrop" id="monthModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>📅 Aggiungi un nuovo mese</h3>
+        <button type="button" class="modal-close" id="btnCloseModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="selectMonth">Mese</label>
+          <select id="selectMonth">
+            <option value="1">Gennaio</option>
+            <option value="2">Febbraio</option>
+            <option value="3">Marzo</option>
+            <option value="4">Aprile</option>
+            <option value="5">Maggio</option>
+            <option value="6">Giugno</option>
+            <option value="7">Luglio</option>
+            <option value="8">Agosto</option>
+            <option value="9">Settembre</option>
+            <option value="10">Ottobre</option>
+            <option value="11">Novembre</option>
+            <option value="12">Dicembre</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="inputYear">Anno</label>
+          <input type="number" id="inputYear" min="2020" max="2099" value="2028">
+        </div>
+        <p class="modal-hint">I giorni del calendario e i riporti dei saldi verranno generati automaticamente in ordine cronologico.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="btnCancelModal">Annulla</button>
+        <button type="button" class="btn btn-primary" id="btnConfirmAddMonth">Crea Mese</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
