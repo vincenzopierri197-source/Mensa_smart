@@ -854,3 +854,40 @@ input[type="checkbox"].chk-voucher {
     font-size: 0.74rem;
   }
 }
+
+/* Final alignment fixes for the live monthly balance view */
+.tabs-scroll {
+  min-width: 0;
+}
+.month-layout > .card,
+.month-layout .sidebar-sticky,
+.month-layout .sidebar-sticky > .card {
+  min-width: 0;
+}
+.paid-box {
+  min-width: 0;
+}
+.paid-input-row input {
+  width: 100%;
+}
+.btn-settle {
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .navbar-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .tabs-scroll {
+    width: 100%;
+    min-width: 0;
+  }
+  .tab-btn {
+    flex: 0 0 auto;
+  }
+  .btn-add-month {
+    position: relative;
+    z-index: 1;
+  }
+}
