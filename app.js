@@ -1207,11 +1207,14 @@ const db = getFirestore(firebaseApp);
     // Azzera solo la copia locale e chiude la sessione; Firestore resta intatto.
     document.getElementById("btnResetAndExit").addEventListener("click", async () => {
       if (!currentUser) return;
-      const confirmed = confirm("Vuoi uscire e azzerare la memoria locale di questo dispositivo?\\n\\nI dati e il codice salvati in questo browser verranno rimossi. I dati online su Firebase NON verranno cancellati. Per recuperarli serviranno il codice personale e il backup JSON.");
+      const confirmed = confirm("Vuoi uscire e azzerare la memoria locale di questo dispositivo?\\n\\nI dati e il codice salvati in questo browser verranno rimossi. I dati online su Firebase NON verranno cancellati. Per recuperarli basterà il codice personale; il backup JSON è facoltativo.");
       if (!confirmed) return;
       const uid = currentUser.uid;
       try {
         clearTimeout(remoteSaveTimer);
+        stopSharedArchiveListener();
+        sharedRecoveryCode = null;
+        lastSharedState = null;
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(STORAGE_KEY + ":" + uid);
         localStorage.removeItem(RECOVERY_CODE_KEY + ":" + uid);
