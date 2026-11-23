@@ -940,10 +940,12 @@ const db = getFirestore(firebaseApp);
         const firstText = await file.text();
         const firstParsed = JSON.parse(firstText);
         let parsed;
+        let restoredRecoveryCode = null;
         if (firstParsed && firstParsed.format === BACKUP_FORMAT) {
           const code = prompt("Inserisci il codice personale di 16 caratteri associato al backup:");
           if (code === null) return;
-          parsed = await readBackupFile(file, code.trim().toUpperCase());
+          restoredRecoveryCode = code.trim().toUpperCase();
+          parsed = await readBackupFile(file, restoredRecoveryCode);
         } else {
           parsed = firstParsed;
         }
@@ -958,6 +960,10 @@ const db = getFirestore(firebaseApp);
           updatedAt: Date.now()
         }, { merge: true });
         localStorage.setItem(STORAGE_KEY + ":" + currentUser.uid, JSON.stringify(state));
+        if (restoredRecoveryCode) {
+          localStorage.setItem(RECOVERY_CODE_KEY + ":" + currentUser.uid, restoredRecoveryCode);
+          document.getElementById("accountCode").textContent = "Codice personale: " + restoredRecoveryCode;
+        }
         render();
         setSyncStatus("Backup ripristinato e sincronizzato");
         alert("Backup ripristinato con successo su questo dispositivo.");
