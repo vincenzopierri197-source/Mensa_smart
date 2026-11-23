@@ -123,9 +123,17 @@ const db = getFirestore(firebaseApp);
       "auth/invalid-credential": "Email o password non corrette.",
       "auth/user-disabled": "Questo account è stato disattivato.",
       "auth/operation-not-allowed": "Attiva Email/Password in Firebase → Authentication → Metodo di accesso.",
-      "permission-denied": "Le regole Firestore non consentono ancora l’accesso ai dati dell’account."
+      "auth/configuration-not-found": "Firebase Authentication non è configurato per questo progetto.",
+      "auth/invalid-api-key": "La chiave API Firebase non è valida. Controlla la configurazione Web.",
+      "auth/network-request-failed": "Connessione a Firebase non riuscita. Controlla internet e riprova.",
+      "auth/too-many-requests": "Troppi tentativi. Attendi qualche minuto e riprova.",
+      "permission-denied": "Le regole Firestore non consentono l’accesso ai dati dell’account."
     };
-    return messages[error.code] || "Operazione non riuscita. Riprova e controlla la configurazione Firebase.";
+    const friendly = messages[error.code];
+    if (friendly) return friendly;
+    const code = error.code || "errore-sconosciuto";
+    const details = error.message ? String(error.message).replace(/^Firebase:\s*/i, "").slice(0, 180) : "";
+    return "Errore Firebase (" + code + "). " + (details || "Apri la console del browser per maggiori dettagli.");
   }
 
   function setAuthMode(mode) {
