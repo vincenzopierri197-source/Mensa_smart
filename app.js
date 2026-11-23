@@ -3,7 +3,7 @@ import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gsta
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB69-Y42-OqXnbqaJkJWBERJJaklbTPEQo",
+  apiKey: "AIzaSyB69-Y42-OqXnbqaJkJWBERJlaklbTPEQo",
   authDomain: "mensa-smart.firebaseapp.com",
   projectId: "mensa-smart",
   storageBucket: "mensa-smart.firebasestorage.app",
