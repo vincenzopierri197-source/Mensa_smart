@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInAnonymously, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signInAnonymously, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -1022,6 +1022,24 @@ const db = getFirestore(firebaseApp);
         alert("Codice personale copiato.");
       } catch (error) {
         alert("Copia automatica non disponibile. Seleziona e copia il codice mostrato.");
+      }
+    });
+
+    // Azzera solo la copia locale e chiude la sessione; Firestore resta intatto.
+    document.getElementById("btnResetAndExit").addEventListener("click", async () => {
+      if (!currentUser) return;
+      const confirmed = confirm("Vuoi uscire e azzerare la memoria locale di questo dispositivo?\\n\\nI dati e il codice salvati in questo browser verranno rimossi. I dati online su Firebase NON verranno cancellati. Per recuperarli serviranno il codice personale e il backup JSON.");
+      if (!confirmed) return;
+      const uid = currentUser.uid;
+      try {
+        clearTimeout(remoteSaveTimer);
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(STORAGE_KEY + ":" + uid);
+        localStorage.removeItem(RECOVERY_CODE_KEY + ":" + uid);
+        await signOut(auth);
+      } catch (error) {
+        console.error("Errore durante uscita e reset locale:", error);
+        alert("Non è stato possibile completare l'uscita: " + error.message);
       }
     });
 
