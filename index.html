@@ -11,8 +11,17 @@
     <div class="auth-card">
       <div class="logo-box">🍽️</div>
       <h1>Accesso a Mensa Smart</h1>
-      <p>Stiamo preparando la tua sessione sicura. Non servono email né password.</p>
-      <p id="authMessage" class="auth-message" role="status" aria-live="polite">Accesso anonimo in corso…</p>
+      <p>Accedi a Mensa Smart senza email né password. Al primo accesso puoi creare un profilo oppure trasferire i tuoi dati da un altro dispositivo.</p>
+      <p id="authMessage" class="auth-message" role="status" aria-live="polite">Accesso sicuro in corso…</p>
+      <div id="profileActions" hidden>
+        <button type="button" class="btn btn-primary auth-submit" id="createProfileBtn">Crea il mio profilo</button>
+        <div class="auth-divider">oppure ripristina i tuoi dati</div>
+        <label for="restoreRecoveryCode">Codice personale (16 caratteri)</label>
+        <input type="text" id="restoreRecoveryCode" maxlength="16" minlength="16" autocomplete="off" autocapitalize="characters" placeholder="Inserisci il codice personale">
+        <label for="initialRestoreFile">File JSON del backup cifrato</label>
+        <input type="file" id="initialRestoreFile" accept=".json,application/json">
+        <button type="button" class="btn btn-restore auth-submit" id="restoreProfileBtn">Ripristina backup</button>
+      </div>
       <button type="button" class="btn btn-primary auth-submit" id="authRetry">Riprova accesso</button>
     </div>
   </section>
