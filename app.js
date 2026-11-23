@@ -1,3 +1,19 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB69-Y42-OqXnbqaJkJWBERJJaklbTPEQo",
+  authDomain: "mensa-smart.firebaseapp.com",
+  projectId: "mensa-smart",
+  storageBucket: "mensa-smart.firebasestorage.app",
+  messagingSenderId: "1083527699670",
+  appId: "1:1083527699670:web:719eae0f384e3a4c837d77"
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+
 (function () {
   const STORAGE_KEY = "gestione_mensa_pro_v1";
   const MONTH_NAMES = [
@@ -19,18 +35,7 @@
     return list;
   }
 
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.months) && parsed.months.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.warn("Ripristino stato predefinito:", e);
-    }
+  function createDefaultState() {
     return {
       mealPrice: 3.10,
       voucherPrice: 3.10,
@@ -40,15 +45,197 @@
     };
   }
 
+  function isValidState(value) {
+    return Boolean(value && Array.isArray(value.months) && value.months.length > 0 &&
+      value.records && typeof value.records === "object" &&
+      value.payments && typeof value.payments === "object");
+  }
+
+  function stateFromStorage(storageKey = STORAGE_KEY) {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return isValidState(parsed) ? parsed : null;
+    } catch (e) {
+      console.warn("Impossibile leggere lo stato salvato:", e);
+      return null;
+    }
+  }
+
+  function loadState(storageKey = STORAGE_KEY) {
+    return stateFromStorage(storageKey) || createDefaultState();
+  }
+
   let state = loadState();
   let activeTab = "summary";
+  let currentUser = null;
+  let authMode = "login";
+  let remoteSaveTimer = null;
+  let authLoadToken = 0;
+
+  function setSyncStatus(message) {
+    const status = document.getElementById("syncStatus");
+    if (status) status.textContent = message;
+  }
 
   function saveState() {
+    const localKey = currentUser ? STORAGE_KEY + ":" + currentUser.uid : STORAGE_KEY;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(localKey, JSON.stringify(state));
     } catch (e) {
       console.warn("Impossibile salvare nel localStorage:", e);
     }
+    if (!currentUser) return;
+
+    const user = currentUser;
+    const snapshot = JSON.parse(JSON.stringify(state));
+    setSyncStatus("Salvataggio…");
+    clearTimeout(remoteSaveTimer);
+    remoteSaveTimer = setTimeout(async () => {
+      try {
+        await setDoc(doc(db, "users", user.uid), {
+          email: user.email || "",
+          userCode: "MS-" + user.uid,
+          appState: snapshot,
+          updatedAt: Date.now()
+        }, { merge: true });
+        if (currentUser && currentUser.uid === user.uid) setSyncStatus("Salvato su Firebase");
+      } catch (error) {
+        console.error("Errore durante il salvataggio su Firebase:", error);
+        if (currentUser && currentUser.uid === user.uid) setSyncStatus("Errore di sincronizzazione");
+      }
+    }, 600);
+  }
+
+  function setAuthMessage(message, isError = false) {
+    const element = document.getElementById("authMessage");
+    if (!element) return;
+    element.textContent = message;
+    element.classList.toggle("error", isError);
+  }
+
+  function authErrorMessage(error) {
+    const messages = {
+      "auth/email-already-in-use": "Questa email è già registrata. Prova ad accedere.",
+      "auth/invalid-email": "Inserisci un indirizzo email valido.",
+      "auth/weak-password": "La password deve contenere almeno 6 caratteri.",
+      "auth/invalid-credential": "Email o password non corrette.",
+      "auth/user-disabled": "Questo account è stato disattivato.",
+      "auth/operation-not-allowed": "Attiva Email/Password in Firebase → Authentication → Metodo di accesso.",
+      "permission-denied": "Le regole Firestore non consentono ancora l’accesso ai dati dell’account."
+    };
+    return messages[error.code] || "Operazione non riuscita. Riprova e controlla la configurazione Firebase.";
+  }
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    const registration = mode === "register";
+    document.getElementById("authTitle").textContent = registration ? "Crea il tuo account" : "Accedi a Mensa Smart";
+    document.getElementById("authSubmit").textContent = registration ? "Crea account" : "Accedi";
+    document.getElementById("authPassword").autocomplete = registration ? "new-password" : "current-password";
+    document.getElementById("authToggle").textContent = registration ? "Hai già un account? Accedi" : "Non hai un account? Creane uno";
+    setAuthMessage("");
+  }
+
+  async function loadUserData(user) {
+    const token = ++authLoadToken;
+    const authGate = document.getElementById("authGate");
+    const appShell = document.getElementById("appShell");
+    authGate.hidden = true;
+    appShell.hidden = true;
+    setAuthMessage("Caricamento dei dati…");
+    try {
+      const userRef = doc(db, "users", user.uid);
+      const remoteSnapshot = await getDoc(userRef);
+      if (token !== authLoadToken) return;
+
+      if (remoteSnapshot.exists() && isValidState(remoteSnapshot.data().appState)) {
+        state = remoteSnapshot.data().appState;
+      } else {
+        const cached = stateFromStorage(STORAGE_KEY + ":" + user.uid);
+        const legacy = cached ? null : stateFromStorage(STORAGE_KEY);
+        if (cached) {
+          state = cached;
+        } else if (legacy && confirm("Ho trovato dati salvati in questo browser. Vuoi importarli nel tuo nuovo account Firebase?")) {
+          state = legacy;
+        } else {
+          state = createDefaultState();
+        }
+        await setDoc(userRef, {
+          email: user.email || "",
+          userCode: "MS-" + user.uid,
+          appState: state,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        }, { merge: true });
+      }
+      if (token !== authLoadToken) return;
+
+      currentUser = user;
+      try {
+        localStorage.setItem(STORAGE_KEY + ":" + user.uid, JSON.stringify(state));
+      } catch (e) {
+        console.warn("Impossibile salvare la copia locale:", e);
+      }
+      document.getElementById("accountIdentity").textContent = user.email || "Account";
+      document.getElementById("accountCode").textContent = "Codice personale: MS-" + user.uid;
+      document.getElementById("authSignOut").hidden = true;
+      authGate.hidden = true;
+      appShell.hidden = false;
+      setSyncStatus("Sincronizzato con Firebase");
+      render();
+    } catch (error) {
+      if (token !== authLoadToken) return;
+      console.error("Errore nel caricamento dell’account:", error);
+      currentUser = null;
+      authGate.hidden = false;
+      appShell.hidden = true;
+      document.getElementById("authSignOut").hidden = false;
+      setAuthMessage(authErrorMessage(error), true);
+    }
+  }
+
+  function initializeAuthentication() {
+    document.getElementById("authForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = document.getElementById("authEmail").value.trim();
+      const password = document.getElementById("authPassword").value;
+      const button = document.getElementById("authSubmit");
+      button.disabled = true;
+      setAuthMessage(authMode === "register" ? "Creazione account…" : "Accesso…");
+      try {
+        if (authMode === "register") {
+          await createUserWithEmailAndPassword(auth, email, password);
+        } else {
+          await signInWithEmailAndPassword(auth, email, password);
+        }
+      } catch (error) {
+        setAuthMessage(authErrorMessage(error), true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("authToggle").addEventListener("click", () => {
+      setAuthMode(authMode === "login" ? "register" : "login");
+    });
+    document.getElementById("btnSignOut").addEventListener("click", () => firebaseSignOut(auth));
+    document.getElementById("authSignOut").addEventListener("click", () => firebaseSignOut(auth));
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        void loadUserData(user);
+      } else {
+        authLoadToken++;
+        currentUser = null;
+        document.getElementById("appShell").hidden = true;
+        document.getElementById("authGate").hidden = false;
+        document.getElementById("authSignOut").hidden = true;
+        setAuthMode("login");
+        setAuthMessage("Accedi o crea un account per usare Mensa Smart.");
+      }
+    });
   }
 
   function formatEuro(num) {
@@ -575,6 +762,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    initializeAuthentication();
     document.getElementById("mealPrice").addEventListener("change", (e) => {
       const val = parseFloat(e.target.value);
       state.mealPrice = isNaN(val) || val < 0 ? 3.10 : val;
