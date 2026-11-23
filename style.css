@@ -1015,3 +1015,31 @@ input[type="checkbox"].chk-voucher {
   .auth-card { padding: 22px; }
   .account-box { grid-column: 1 / -1; }
 }
+
+/* Agenda / Note */
+.notes-page { max-width: 1000px; margin: 0 auto; padding: 18px 0; }
+.notes-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; }
+.notes-heading h2 { font-size:1.35rem; }
+.notes-heading p { color:var(--muted); margin-top:3px; }
+.notes-count { background:var(--blue-bg); color:var(--accent); border-radius:999px; padding:6px 12px; font-weight:700; white-space:nowrap; }
+.note-editor { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px; display:grid; gap:9px; margin-bottom:20px; }
+.note-editor label { font-weight:650; font-size:.9rem; }
+.note-editor input, .note-editor textarea { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; font:inherit; color:var(--text); background:var(--surface); }
+.note-editor textarea { resize:vertical; min-height:110px; }
+.note-editor button { justify-self:start; margin-top:5px; }
+.notes-list { display:grid; gap:14px; }
+.note-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow); }
+.note-card.pinned { border-left:4px solid var(--accent); }
+.note-card-top { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; color:var(--muted); font-size:.85rem; margin-bottom:8px; }
+.note-pin { color:var(--accent); font-weight:700; }
+.note-card h3 { font-size:1.05rem; margin-bottom:8px; }
+.note-content { white-space:normal; overflow-wrap:anywhere; }
+.note-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.btn-danger { background:var(--red-bg); color:var(--red); }
+.notes-empty { background:var(--surface); border:1px dashed var(--border); border-radius:var(--radius); padding:28px 16px; text-align:center; color:var(--muted); }
+@media (max-width:640px) {
+  .notes-page { padding:10px 0; }
+  .notes-heading { align-items:flex-start; }
+  .note-editor, .note-card { padding:13px; }
+  .note-actions .btn { flex:1 1 auto; justify-content:center; }
+}
