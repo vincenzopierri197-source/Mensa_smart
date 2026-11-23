@@ -1240,21 +1240,23 @@ const db = getFirestore(firebaseApp);
         activeTab = "summary";
         if (!currentUser) throw new Error("Sessione Firebase non disponibile.");
         clearTimeout(remoteSaveTimer);
-        const activeRecoveryCode = restoredRecoveryCode || getOrCreateRecoveryCode(currentUser.uid);
-        await Promise.all([
-          setDoc(doc(db, "users", currentUser.uid), {
+        const activeRecoveryCode = restoredRecoveryCode || sharedRecoveryCode || getOrCreateRecoveryCode(currentUser.uid);
+        const recoveryRef = await getRecoveryDocumentRef(activeRecoveryCode);
+        await runTransaction(db, async (transaction) => {
+          transaction.set(recoveryRef, {
+            ownerUid: currentUser.uid,
             appState: state,
             updatedAt: Date.now()
-          }, { merge: true }),
-          saveRecoverySnapshot(currentUser.uid, activeRecoveryCode, state)
-        ]);
+          }, { merge: true });
+        });
+        sharedRecoveryCode = activeRecoveryCode;
+        lastSharedState = cloneState(state);
         localStorage.setItem(STORAGE_KEY + ":" + currentUser.uid, JSON.stringify(state));
-        if (restoredRecoveryCode) {
-          localStorage.setItem(RECOVERY_CODE_KEY + ":" + currentUser.uid, restoredRecoveryCode);
-          document.getElementById("accountCode").textContent = "Codice personale: " + restoredRecoveryCode;
-        }
+        localStorage.setItem(RECOVERY_CODE_KEY + ":" + currentUser.uid, activeRecoveryCode);
+        document.getElementById("accountCode").textContent = "Codice personale: " + activeRecoveryCode;
+        await listenToSharedArchive(activeRecoveryCode, currentUser);
         render();
-        setSyncStatus("Backup ripristinato e sincronizzato");
+        setSyncStatus("Backup ripristinato nell'archivio condiviso");
         alert("Backup ripristinato con successo su questo dispositivo.");
       } catch (error) {
         console.error("Errore ripristino backup:", error);
