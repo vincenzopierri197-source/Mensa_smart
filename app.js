@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signInAnonymously, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -185,8 +185,17 @@ const db = getFirestore(firebaseApp);
     }
   }
 
-  function initializeAuthentication() {
+  async function initializeAuthentication() {
     const retryButton = document.getElementById("authRetry");
+
+    // Mantiene la sessione anonima nel browser anche dopo chiusura e riapertura.
+    // È lo stesso criterio già adottato da Marvel Tracker.
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (error) {
+      setAuthMessage(authErrorMessage(error), true);
+      return;
+    }
     if (retryButton) {
       retryButton.addEventListener("click", () => {
         if (anonymousSignInPending) return;
