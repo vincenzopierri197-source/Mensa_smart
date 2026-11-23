@@ -1086,3 +1086,44 @@ input[type="checkbox"].chk-voucher {
 .personal-table{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin:12px 0 22px}.personal-table table{width:100%;border-collapse:collapse;min-width:600px}.personal-table th,.personal-table td{padding:10px;text-align:left;border-bottom:1px solid var(--border);font-size:.88rem}.personal-table th{background:var(--blue-bg)}
 .personal-list{display:grid;gap:10px}.personal-item{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}.personal-item small{display:block;color:var(--muted);margin:4px 0}.personal-item p{margin:4px 0}.personal-item.is-done{opacity:.65}.personal-item.is-done strong{text-decoration:line-through}
 @media(max-width:640px){.personal-page{padding:8px 0}.personal-form{grid-template-columns:1fr;padding:12px}.personal-form button{width:100%;justify-self:stretch;justify-content:center}.personal-item{align-items:flex-start;flex-direction:column}.personal-item>div:last-child{width:100%}.personal-item button{min-height:40px}}
+
+
+/* Menu a tendina per le funzioni di gestione personale */
+.personal-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 4px 10px 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: .86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.personal-menu select {
+  min-width: 190px;
+  min-height: 34px;
+  padding: 6px 30px 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .personal-menu {
+    flex: 0 0 100%;
+    width: 100%;
+    justify-content: space-between;
+    min-height: 44px;
+  }
+  .personal-menu select {
+    min-width: 0;
+    width: min(62%, 260px);
+    min-height: 38px;
+  }
+}
