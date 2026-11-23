@@ -767,7 +767,7 @@ const db = getFirestore(firebaseApp);
     });
     container.appendChild(sumBtn);
 
-    const moduleTabs = [["work","⏱️ Ore lavorate"],["overtime","⚖️ Straordinari e recuperi"],["leave","🏖️ Ferie e permessi"],["custom","🧩 Campi personalizzati"],["reminders","🔔 Promemoria e scadenze"]];
+    const moduleTabs = [["notes","📝 Agenda / Note"],["calendar","📅 Calendario"],["work","⏱️ Ore lavorate"],["overtime","⚖️ Straordinari e recuperi"],["leave","🏖️ Ferie e permessi"],["custom","🧩 Campi personalizzati"],["reminders","🔔 Promemoria e scadenze"]];
     const personalMenu = document.createElement("label");
     personalMenu.className = "personal-menu";
     personalMenu.innerHTML = '<span>Gestione personale</span><select aria-label="Seleziona una funzione di gestione personale"><option value="">Scegli una funzione…</option></select>';
@@ -785,23 +785,6 @@ const db = getFirestore(firebaseApp);
       render();
     });
     container.appendChild(personalMenu);
-
-    const notesBtn = document.createElement("button");
-    notesBtn.type = "button";
-    notesBtn.className = "tab-btn notes-tab" + (activeTab === "notes" ? " active" : "");
-    notesBtn.textContent = "📝 Agenda / Note";
-    notesBtn.addEventListener("click", () => {
-      activeTab = "notes";
-      render();
-    });
-    container.appendChild(notesBtn);
-
-    const calendarBtn = document.createElement("button");
-    calendarBtn.type = "button";
-    calendarBtn.className = "tab-btn calendar-tab" + (activeTab === "calendar" ? " active" : "");
-    calendarBtn.textContent = "📅 Calendario";
-    calendarBtn.addEventListener("click", () => { activeTab = "calendar"; render(); });
-    container.appendChild(calendarBtn);
 
     state.months.forEach((mObj) => {
       const btn = document.createElement("button");
