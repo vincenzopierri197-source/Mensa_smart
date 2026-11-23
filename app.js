@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as firebaseSignOut } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -70,7 +70,7 @@ const db = getFirestore(firebaseApp);
   let state = loadState();
   let activeTab = "summary";
   let currentUser = null;
-  let authMode = "login";
+  let anonymousSignInPending = false;
   let remoteSaveTimer = null;
   let authLoadToken = 0;
 
@@ -95,7 +95,6 @@ const db = getFirestore(firebaseApp);
     remoteSaveTimer = setTimeout(async () => {
       try {
         await setDoc(doc(db, "users", user.uid), {
-          email: user.email || "",
           userCode: "MS-" + user.uid,
           appState: snapshot,
           updatedAt: Date.now()
@@ -117,12 +116,7 @@ const db = getFirestore(firebaseApp);
 
   function authErrorMessage(error) {
     const messages = {
-      "auth/email-already-in-use": "Questa email è già registrata. Prova ad accedere.",
-      "auth/invalid-email": "Inserisci un indirizzo email valido.",
-      "auth/weak-password": "La password deve contenere almeno 6 caratteri.",
-      "auth/invalid-credential": "Email o password non corrette.",
-      "auth/user-disabled": "Questo account è stato disattivato.",
-      "auth/operation-not-allowed": "Attiva Email/Password in Firebase → Authentication → Metodo di accesso.",
+      "auth/operation-not-allowed": "L’accesso anonimo non è ancora attivo. In Firebase vai su Authentication → Metodo di accesso → Anonimo e attivalo.",
       "auth/configuration-not-found": "Firebase Authentication non è configurato per questo progetto.",
       "auth/invalid-api-key": "La chiave API Firebase non è valida. Controlla la configurazione Web.",
       "auth/network-request-failed": "Connessione a Firebase non riuscita. Controlla internet e riprova.",
@@ -132,18 +126,8 @@ const db = getFirestore(firebaseApp);
     const friendly = messages[error.code];
     if (friendly) return friendly;
     const code = error.code || "errore-sconosciuto";
-    const details = error.message ? String(error.message).replace(/^Firebase:\s*/i, "").slice(0, 180) : "";
-    return "Errore Firebase (" + code + "). " + (details || "Apri la console del browser per maggiori dettagli.");
-  }
-
-  function setAuthMode(mode) {
-    authMode = mode;
-    const registration = mode === "register";
-    document.getElementById("authTitle").textContent = registration ? "Crea il tuo account" : "Accedi a Mensa Smart";
-    document.getElementById("authSubmit").textContent = registration ? "Crea account" : "Accedi";
-    document.getElementById("authPassword").autocomplete = registration ? "new-password" : "current-password";
-    document.getElementById("authToggle").textContent = registration ? "Hai già un account? Accedi" : "Non hai un account? Creane uno";
-    setAuthMessage("");
+    const details = error.message ? String(error.message).replace(/^Firebase:\\s*/i, "").slice(0, 180) : "";
+    return "Errore Firebase (" + code + "). " + (details || "Controlla la connessione e riprova.");
   }
 
   async function loadUserData(user) {
@@ -171,7 +155,6 @@ const db = getFirestore(firebaseApp);
           state = createDefaultState();
         }
         await setDoc(userRef, {
-          email: user.email || "",
           userCode: "MS-" + user.uid,
           appState: state,
           createdAt: Date.now(),
@@ -186,9 +169,8 @@ const db = getFirestore(firebaseApp);
       } catch (e) {
         console.warn("Impossibile salvare la copia locale:", e);
       }
-      document.getElementById("accountIdentity").textContent = user.email || "Account";
+      document.getElementById("accountIdentity").textContent = "Sessione anonima";
       document.getElementById("accountCode").textContent = "Codice personale: MS-" + user.uid;
-      document.getElementById("authSignOut").hidden = true;
       authGate.hidden = true;
       appShell.hidden = false;
       setSyncStatus("Sincronizzato con Firebase");
@@ -199,50 +181,44 @@ const db = getFirestore(firebaseApp);
       currentUser = null;
       authGate.hidden = false;
       appShell.hidden = true;
-      document.getElementById("authSignOut").hidden = false;
       setAuthMessage(authErrorMessage(error), true);
     }
   }
 
   function initializeAuthentication() {
-    document.getElementById("authForm").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const email = document.getElementById("authEmail").value.trim();
-      const password = document.getElementById("authPassword").value;
-      const button = document.getElementById("authSubmit");
-      button.disabled = true;
-      setAuthMessage(authMode === "register" ? "Creazione account…" : "Accesso…");
-      try {
-        if (authMode === "register") {
-          await createUserWithEmailAndPassword(auth, email, password);
-        } else {
-          await signInWithEmailAndPassword(auth, email, password);
-        }
-      } catch (error) {
-        setAuthMessage(authErrorMessage(error), true);
-      } finally {
-        button.disabled = false;
-      }
-    });
-
-    document.getElementById("authToggle").addEventListener("click", () => {
-      setAuthMode(authMode === "login" ? "register" : "login");
-    });
-    document.getElementById("btnSignOut").addEventListener("click", () => firebaseSignOut(auth));
-    document.getElementById("authSignOut").addEventListener("click", () => firebaseSignOut(auth));
+    const retryButton = document.getElementById("authRetry");
+    if (retryButton) {
+      retryButton.addEventListener("click", () => {
+        if (anonymousSignInPending) return;
+        anonymousSignInPending = true;
+        retryButton.disabled = true;
+        setAuthMessage("Accesso in corso…");
+        signInAnonymously(auth).catch((error) => {
+          setAuthMessage(authErrorMessage(error), true);
+        }).finally(() => {
+          anonymousSignInPending = false;
+          retryButton.disabled = false;
+        });
+      });
+    }
 
     onAuthStateChanged(auth, (user) => {
       if (user) {
         void loadUserData(user);
-      } else {
-        authLoadToken++;
-        currentUser = null;
-        document.getElementById("appShell").hidden = true;
-        document.getElementById("authGate").hidden = false;
-        document.getElementById("authSignOut").hidden = true;
-        setAuthMode("login");
-        setAuthMessage("Accedi o crea un account per usare Mensa Smart.");
+        return;
       }
+      authLoadToken++;
+      currentUser = null;
+      document.getElementById("appShell").hidden = true;
+      document.getElementById("authGate").hidden = false;
+      setAuthMessage("Accesso anonimo in corso…");
+      if (anonymousSignInPending) return;
+      anonymousSignInPending = true;
+      signInAnonymously(auth).catch((error) => {
+        setAuthMessage(authErrorMessage(error), true);
+      }).finally(() => {
+        anonymousSignInPending = false;
+      });
     });
   }
 
