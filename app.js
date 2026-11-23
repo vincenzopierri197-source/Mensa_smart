@@ -767,8 +767,24 @@ const db = getFirestore(firebaseApp);
     });
     container.appendChild(sumBtn);
 
-    const moduleTabs = [["work","⏱️ Ore lavorate"],["overtime","⚖️ Straordinari"],["leave","🏖️ Ferie e permessi"],["custom","🧩 Campi"],["reminders","🔔 Promemoria"]];
-    moduleTabs.forEach(([key,label]) => { const btn=document.createElement("button"); btn.type="button"; btn.className="tab-btn"+(activeTab===key?" active":""); btn.textContent=label; btn.addEventListener("click",()=>{activeTab=key;render();}); container.appendChild(btn); });
+    const moduleTabs = [["work","⏱️ Ore lavorate"],["overtime","⚖️ Straordinari e recuperi"],["leave","🏖️ Ferie e permessi"],["custom","🧩 Campi personalizzati"],["reminders","🔔 Promemoria e scadenze"]];
+    const personalMenu = document.createElement("label");
+    personalMenu.className = "personal-menu";
+    personalMenu.innerHTML = '<span>Gestione personale</span><select aria-label="Seleziona una funzione di gestione personale"><option value="">Scegli una funzione…</option></select>';
+    const personalSelect = personalMenu.querySelector("select");
+    moduleTabs.forEach(([key, label]) => {
+      const option = document.createElement("option");
+      option.value = key;
+      option.textContent = label;
+      option.selected = activeTab === key;
+      personalSelect.appendChild(option);
+    });
+    personalSelect.addEventListener("change", () => {
+      if (!personalSelect.value) return;
+      activeTab = personalSelect.value;
+      render();
+    });
+    container.appendChild(personalMenu);
 
     const notesBtn = document.createElement("button");
     notesBtn.type = "button";
