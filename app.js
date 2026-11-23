@@ -70,6 +70,8 @@ const db = getFirestore(firebaseApp);
 
   let state = loadState();
   let activeTab = "summary";
+  let calendarMode = "month";
+  let calendarCursor = new Date();
   let currentUser = null;
   let pendingProfileUser = null;
   let anonymousSignInPending = false;
@@ -696,6 +698,13 @@ const db = getFirestore(firebaseApp);
     });
     container.appendChild(notesBtn);
 
+    const calendarBtn = document.createElement("button");
+    calendarBtn.type = "button";
+    calendarBtn.className = "tab-btn calendar-tab" + (activeTab === "calendar" ? " active" : "");
+    calendarBtn.textContent = "📅 Calendario";
+    calendarBtn.addEventListener("click", () => { activeTab = "calendar"; render(); });
+    container.appendChild(calendarBtn);
+
     state.months.forEach((mObj) => {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -1168,6 +1177,83 @@ const db = getFirestore(firebaseApp);
     });
   }
 
+  function localDateKey(date) {
+    return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+  }
+  function calendarDateLabel(date, includeYear = true) {
+    return date.toLocaleDateString("it-IT", { day: "numeric", month: "long", ...(includeYear ? { year: "numeric" } : {}) });
+  }
+  function calendarDayNotes(date) {
+    if (!Array.isArray(state.notes)) return [];
+    return state.notes.filter(note => note.date === localDateKey(date));
+  }
+  function renderCalendarView() {
+    const root = document.getElementById("appRoot");
+    const cursor = new Date(calendarCursor.getFullYear(), calendarCursor.getMonth(), calendarCursor.getDate());
+    let heading = "", dates = [];
+    if (calendarMode === "month") {
+      heading = cursor.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
+      const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+      const start = new Date(first); start.setDate(1 - first.getDay());
+      dates = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
+    } else if (calendarMode === "week") {
+      const start = new Date(cursor); start.setDate(cursor.getDate() - cursor.getDay());
+      const end = new Date(start); end.setDate(end.getDate() + 6);
+      heading = calendarDateLabel(start, false) + " – " + calendarDateLabel(end);
+      dates = Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
+    } else {
+      heading = cursor.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+      dates = [cursor];
+    }
+    const selectedKey = localDateKey(cursor), todayKey = localDateKey(new Date());
+    const dayNames = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
+    const cells = dates.map(date => {
+      const key = localDateKey(date), count = calendarDayNotes(date).length;
+      const outside = calendarMode === "month" && date.getMonth() !== cursor.getMonth();
+      return `<button type="button" class="calendar-day${outside ? " outside-month" : ""}${key === selectedKey ? " selected" : ""}${key === todayKey ? " today" : ""}" data-calendar-date="${key}">
+        <span class="calendar-day-number">${date.getDate()}</span>${count ? `<span class="calendar-note-count">📝 ${count}</span>` : ""}
+      </button>`;
+    }).join("");
+    const selectedNotes = calendarDayNotes(cursor);
+    root.innerHTML = `
+      <section class="calendar-page">
+        <div class="calendar-heading"><h2>📅 Calendario</h2><p>Le note con una data sono visibili qui.</p></div>
+        <div class="calendar-toolbar">
+          <div class="calendar-nav"><button type="button" class="btn btn-secondary" data-calendar-prev>‹</button><button type="button" class="btn btn-secondary" data-calendar-today>Oggi</button><button type="button" class="btn btn-secondary" data-calendar-next>›</button></div>
+          <h3>${heading}</h3>
+          <div class="calendar-modes"><button type="button" class="btn ${calendarMode === "month" ? "btn-primary" : "btn-secondary"}" data-calendar-mode="month">Mese</button><button type="button" class="btn ${calendarMode === "week" ? "btn-primary" : "btn-secondary"}" data-calendar-mode="week">Settimana</button><button type="button" class="btn ${calendarMode === "day" ? "btn-primary" : "btn-secondary"}" data-calendar-mode="day">Giorno</button></div>
+        </div>
+        ${calendarMode !== "day" ? `<div class="calendar-weekdays">${dayNames.map(n => `<span>${n}</span>`).join("")}</div>` : ""}
+        <div class="calendar-grid ${calendarMode}">${cells}</div>
+        <section class="calendar-selected-notes"><h3>Note del ${calendarDateLabel(cursor)}</h3>
+          ${selectedNotes.length ? selectedNotes.map(note => `<article class="calendar-note"><strong>${escapeNoteHtml(note.title || "Nota senza titolo")}</strong><p>${escapeNoteHtml(note.body || "").replace(/\n/g, "<br>")}</p>${note.pinned ? "<span>📌 In evidenza</span>" : ""}</article>`).join("") : '<p class="notes-empty">Nessuna nota per questa data.</p>'}
+          <button type="button" class="btn btn-primary" id="calendarAddNote">＋ Aggiungi una nota per questo giorno</button>
+        </section>
+      </section>`;
+    root.querySelectorAll("[data-calendar-date]").forEach(button => button.addEventListener("click", () => {
+      const [y,m,d] = button.dataset.calendarDate.split("-").map(Number);
+      calendarCursor = new Date(y, m - 1, d); render();
+    }));
+    root.querySelectorAll("[data-calendar-mode]").forEach(button => button.addEventListener("click", () => { calendarMode = button.dataset.calendarMode; render(); }));
+    root.querySelector("[data-calendar-today]").addEventListener("click", () => { calendarCursor = new Date(); render(); });
+    const shift = calendarMode === "month" ? -1 : calendarMode === "week" ? -7 : -1;
+    root.querySelector("[data-calendar-prev]").addEventListener("click", () => {
+      if (calendarMode === "month") { calendarCursor.setDate(1); calendarCursor.setMonth(calendarCursor.getMonth() - 1); }
+      else calendarCursor.setDate(calendarCursor.getDate() + shift);
+      render();
+    });
+    root.querySelector("[data-calendar-next]").addEventListener("click", () => {
+      if (calendarMode === "month") { calendarCursor.setDate(1); calendarCursor.setMonth(calendarCursor.getMonth() + 1); }
+      else calendarCursor.setDate(calendarCursor.getDate() + (calendarMode === "week" ? 7 : 1));
+      render();
+    });
+    root.querySelector("#calendarAddNote").addEventListener("click", () => {
+      activeTab = "notes"; render();
+      const dateField = document.getElementById("noteDate"); if (dateField) dateField.value = selectedKey;
+      const bodyField = document.getElementById("noteBody"); if (bodyField) bodyField.focus();
+    });
+  }
+
   function render() {
     const mealInput = document.getElementById("mealPrice");
     const voucherInput = document.getElementById("voucherPrice");
@@ -1181,6 +1267,8 @@ const db = getFirestore(firebaseApp);
       renderSummaryView(statsMap);
     } else if (activeTab === "notes") {
       renderNotesView();
+    } else if (activeTab === "calendar") {
+      renderCalendarView();
     } else {
       renderMonthView(activeTab, statsMap);
     }
