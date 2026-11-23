@@ -676,7 +676,7 @@ const db = getFirestore(firebaseApp);
 
   // Moduli personali: ore, recuperi, assenze, campi e promemoria.
   function ensureWorkData() {
-    state.workEntries ||= []; state.leaveEntries ||= [];
+    state.workEntries ||= []; state.overtimeAdjustments ||= []; state.leaveEntries ||= [];
     state.leaveConfig ||= { annualDays: 0, carriedDays: 0 };
     state.customFieldDefs ||= []; state.customFieldValues ||= {};
     state.reminders ||= [];
@@ -712,17 +712,17 @@ const db = getFirestore(firebaseApp);
     ensureWorkData();
     const rows=[...state.workEntries].sort((a,b)=>a.date.localeCompare(b.date));
     const calculated=rows.reduce((n,x)=>n+Number(x.overtimeMinutes||0),0);
-    const adjustments=rows.reduce((n,x)=>n+Number(x.adjustmentMinutes||0),0);
+    const adjustments=state.overtimeAdjustments.reduce((n,x)=>n+Number(x.minutes||0),0);
     const balance=calculated+adjustments;
     const root=document.getElementById("appRoot");
     root.innerHTML=`<section class="personal-page"><h2>⚖️ Straordinari e recuperi</h2><p class="personal-muted">Saldo progressivo calcolato sulle ore registrate, con possibilità di annotare recuperi o correzioni manuali.</p><div class="personal-kpis"><article><small>Saldo maturato</small><strong>${fmtHours(balance)}</strong></article><article><small>Da giornate registrate</small><strong>${fmtHours(calculated)}</strong></article></div>
       <form id="adjustForm" class="personal-form"><label>Data<input name="date" type="date" required value="${localDateKey(new Date())}"></label><label>Tipo<select name="kind"><option value="positive">Aggiungi ore</option><option value="negative">Recupero / sottrai ore</option></select></label><label>Ore<input name="hours" type="number" min="0.25" step="0.25" required></label><label>Motivo<input name="note" maxlength="300" placeholder="Motivo"></label><button class="btn btn-primary">＋ Registra movimento</button></form>
-      <h3>Movimenti</h3><div class="personal-table"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Variazione</th></tr></thead><tbody>${rows.filter(x=>x.adjustmentMinutes).map(x=>`<tr><td>${escapeNoteHtml(x.date)}</td><td>${escapeNoteHtml(x.note||"Recupero")}</td><td>${fmtHours(x.adjustmentMinutes)}</td></tr>`).join("")||'<tr><td colspan="3">Nessun movimento manuale.</td></tr>'}</tbody></table></div></section>`;
-    root.querySelector("#adjustForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.currentTarget),entry={id:crypto.randomUUID(),date:f.get("date"),adjustmentMinutes:Math.round(Number(f.get("hours"))*60)*(f.get("kind")==="negative"?-1:1),note:f.get("note")||"Movimento manuale",workedMinutes:0,overtimeMinutes:0};state.workEntries.push(entry);saveState();render();});
+      <h3>Movimenti</h3><div class="personal-table"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Variazione</th></tr></thead><tbody>${state.overtimeAdjustments.map(x=>`<tr><td>${escapeNoteHtml(x.date)}</td><td>${escapeNoteHtml(x.note||"Recupero")}</td><td>${fmtHours(x.minutes)}</td></tr>`).join("")||'<tr><td colspan="3">Nessun movimento manuale.</td></tr>'}</tbody></table></div></section>`;
+    root.querySelector("#adjustForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.currentTarget),entry={id:crypto.randomUUID(),date:f.get("date"),adjustmentMinutes:Math.round(Number(f.get("hours"))*60)*(f.get("kind")==="negative"?-1:1),note:f.get("note")||"Movimento manuale",workedMinutes:0,overtimeMinutes:0};state.overtimeAdjustments.push({id:entry.id,date:entry.date,minutes:entry.adjustmentMinutes,note:entry.note});saveState();render();});
   }
   function renderLeaveView() {
     ensureWorkData();const root=document.getElementById("appRoot"),cfg=state.leaveConfig;
-    const used=state.leaveEntries.reduce((n,x)=>n+Number(x.days||0),0),remaining=Number(cfg.annualDays||0)+Number(cfg.carriedDays||0)-used;
+    const used=state.leaveEntries.filter(x=>x.kind==="Ferie"||x.kind==="Permesso").reduce((n,x)=>n+Number(x.days||0),0),remaining=Number(cfg.annualDays||0)+Number(cfg.carriedDays||0)-used;
     root.innerHTML=`<section class="personal-page"><h2>🏖️ Ferie e permessi</h2><p class="personal-muted">Imposta il tuo monte giorni e registra ferie o permessi. Il residuo si aggiorna automaticamente.</p>
       <form id="leaveConfigForm" class="personal-form"><label>Giorni annuali maturati<input name="annualDays" type="number" min="0" step="0.5" value="${cfg.annualDays}"></label><label>Residuo riportato<input name="carriedDays" type="number" min="0" step="0.5" value="${cfg.carriedDays}"></label><button class="btn btn-secondary">Salva monte giorni</button></form>
       <div class="personal-kpis"><article><small>Giorni disponibili</small><strong>${remaining}</strong></article><article><small>Giorni utilizzati</small><strong>${used}</strong></article></div>
