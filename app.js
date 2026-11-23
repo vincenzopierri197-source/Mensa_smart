@@ -41,7 +41,8 @@ const db = getFirestore(firebaseApp);
       voucherPrice: 3.10,
       months: createDefaultMonths(),
       records: {},
-      payments: {}
+      payments: {},
+      notes: []
     };
   }
 
@@ -685,6 +686,16 @@ const db = getFirestore(firebaseApp);
     });
     container.appendChild(sumBtn);
 
+    const notesBtn = document.createElement("button");
+    notesBtn.type = "button";
+    notesBtn.className = "tab-btn notes-tab" + (activeTab === "notes" ? " active" : "");
+    notesBtn.textContent = "📝 Agenda / Note";
+    notesBtn.addEventListener("click", () => {
+      activeTab = "notes";
+      render();
+    });
+    container.appendChild(notesBtn);
+
     state.months.forEach((mObj) => {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -1066,6 +1077,97 @@ const db = getFirestore(firebaseApp);
     }
   }
 
+  function escapeNoteHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[char]));
+  }
+
+  function renderNotesView() {
+    if (!Array.isArray(state.notes)) state.notes = [];
+    const root = document.getElementById("appRoot");
+    const today = new Date().toISOString().slice(0, 10);
+    const notes = [...state.notes].sort((a, b) =>
+      Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) ||
+      String(b.updatedAt || b.date || "").localeCompare(String(a.updatedAt || a.date || ""))
+    );
+    root.innerHTML = `
+      <section class="notes-page">
+        <div class="notes-heading">
+          <div><h2>📝 Agenda · Note personali</h2><p>Appunti liberi, sincronizzati tra i tuoi dispositivi.</p></div>
+          <span class="notes-count">${notes.length} ${notes.length === 1 ? "nota" : "note"}</span>
+        </div>
+        <form id="noteCreateForm" class="note-editor">
+          <label for="noteTitle">Titolo</label>
+          <input id="noteTitle" maxlength="120" placeholder="Titolo della nota (facoltativo)">
+          <label for="noteDate">Data</label>
+          <input id="noteDate" type="date" value="${today}">
+          <label for="noteBody">Nota</label>
+          <textarea id="noteBody" rows="5" maxlength="10000" placeholder="Scrivi qui il tuo appunto…"></textarea>
+          <button class="btn btn-primary" type="submit">＋ Salva nota</button>
+        </form>
+        <div class="notes-list">
+          ${notes.length ? notes.map(note => `
+            <article class="note-card${note.pinned ? " pinned" : ""}" data-note-id="${escapeNoteHtml(note.id)}">
+              <div class="note-card-top"><time>${escapeNoteHtml(note.date || "")}</time>${note.pinned ? '<span class="note-pin">📌 In evidenza</span>' : ""}</div>
+              <h3>${escapeNoteHtml(note.title || "Nota senza titolo")}</h3>
+              <p class="note-content">${escapeNoteHtml(note.body).replace(/\n/g, "<br>")}</p>
+              <div class="note-actions">
+                <button type="button" class="btn btn-secondary" data-note-edit>✏️ Modifica</button>
+                <button type="button" class="btn btn-secondary" data-note-pin>${note.pinned ? "📌 Togli evidenza" : "📌 Evidenzia"}</button>
+                <button type="button" class="btn btn-danger" data-note-delete>🗑️ Elimina</button>
+              </div>
+            </article>`).join("") : '<div class="notes-empty">Ancora nessuna nota. Scrivi il tuo primo appunto qui sopra.</div>'}
+        </div>
+      </section>`;
+
+    root.querySelector("#noteCreateForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const body = root.querySelector("#noteBody").value.trim();
+      const title = root.querySelector("#noteTitle").value.trim();
+      const date = root.querySelector("#noteDate").value || today;
+      if (!body && !title) {
+        alert("Scrivi almeno il titolo o il contenuto della nota.");
+        return;
+      }
+      state.notes.push({ id: crypto.randomUUID(), title, body, date, pinned: false, updatedAt: new Date().toISOString() });
+      saveState();
+      render();
+    });
+
+    root.querySelectorAll("[data-note-id]").forEach(card => {
+      const id = card.dataset.noteId;
+      const note = state.notes.find(item => item.id === id);
+      if (!note) return;
+      card.querySelector("[data-note-edit]").addEventListener("click", () => {
+        const title = prompt("Titolo della nota:", note.title || "");
+        if (title === null) return;
+        const body = prompt("Testo della nota:", note.body || "");
+        if (body === null) return;
+        const date = prompt("Data (AAAA-MM-GG):", note.date || today);
+        if (date === null) return;
+        note.title = title.trim();
+        note.body = body;
+        note.date = date;
+        note.updatedAt = new Date().toISOString();
+        saveState();
+        render();
+      });
+      card.querySelector("[data-note-pin]").addEventListener("click", () => {
+        note.pinned = !note.pinned;
+        note.updatedAt = new Date().toISOString();
+        saveState();
+        render();
+      });
+      card.querySelector("[data-note-delete]").addEventListener("click", () => {
+        if (!confirm("Eliminare questa nota?")) return;
+        state.notes = state.notes.filter(item => item.id !== id);
+        saveState();
+        render();
+      });
+    });
+  }
+
   function render() {
     const mealInput = document.getElementById("mealPrice");
     const voucherInput = document.getElementById("voucherPrice");
@@ -1077,6 +1179,8 @@ const db = getFirestore(firebaseApp);
 
     if (activeTab === "summary") {
       renderSummaryView(statsMap);
+    } else if (activeTab === "notes") {
+      renderNotesView();
     } else {
       renderMonthView(activeTab, statsMap);
     }
