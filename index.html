@@ -18,10 +18,10 @@
         <div class="auth-divider">oppure ripristina i tuoi dati</div>
         <label for="restoreRecoveryCode">Codice personale (16 caratteri)</label>
         <input type="text" id="restoreRecoveryCode" maxlength="16" minlength="16" autocomplete="off" autocapitalize="characters" placeholder="Inserisci il codice personale">
+        <button type="button" class="btn btn-restore auth-submit" id="restoreProfileBtn">Entra e recupera i miei dati</button>
+        <small class="auth-hint">Inserisci il codice e premi il pulsante qui sopra. Il file JSON è facoltativo.</small>
         <label for="initialRestoreFile">File JSON del backup (facoltativo)</label>
         <input type="file" id="initialRestoreFile" accept=".json,application/json">
-        <small class="auth-hint">Puoi ripristinare usando il solo codice personale. Il file JSON è una copia di sicurezza aggiuntiva.</small>
-        <button type="button" class="btn btn-restore auth-submit" id="restoreProfileBtn">Ripristina con codice</button>
       </div>
       <button type="button" class="btn btn-primary auth-submit" id="authRetry">Riprova accesso</button>
     </div>
