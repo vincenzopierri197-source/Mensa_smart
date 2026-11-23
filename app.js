@@ -92,6 +92,30 @@ const db = getFirestore(firebaseApp);
     return code;
   }
 
+  // Il codice personale identifica un documento di recupero cloud.
+  // Nel database viene salvato solo l'hash del codice come ID, non il codice in chiaro.
+  async function recoveryCodeHash(code) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code));
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function saveRecoverySnapshot(uid, code, snapshot) {
+    const hash = await recoveryCodeHash(code);
+    await setDoc(doc(db, "recoveryCodes", hash), {
+      ownerUid: uid,
+      appState: snapshot,
+      updatedAt: Date.now()
+    }, { merge: true });
+  }
+
+  async function findRecoverySnapshot(code) {
+    const hash = await recoveryCodeHash(code);
+    const recoverySnapshot = await getDoc(doc(db, "recoveryCodes", hash));
+    if (!recoverySnapshot.exists()) return null;
+    const recovered = recoverySnapshot.data();
+    return isValidState(recovered.appState) ? recovered.appState : null;
+  }
+
   function bytesToBase64(bytes) {
     let binary = "";
     bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
@@ -170,11 +194,15 @@ const db = getFirestore(firebaseApp);
     clearTimeout(remoteSaveTimer);
     remoteSaveTimer = setTimeout(async () => {
       try {
-        await setDoc(doc(db, "users", user.uid), {
-          userCode: "MS-" + user.uid,
-          appState: snapshot,
-          updatedAt: Date.now()
-        }, { merge: true });
+        const recoveryCode = getOrCreateRecoveryCode(user.uid);
+        await Promise.all([
+          setDoc(doc(db, "users", user.uid), {
+            userCode: "MS-" + user.uid,
+            appState: snapshot,
+            updatedAt: Date.now()
+          }, { merge: true }),
+          saveRecoverySnapshot(user.uid, recoveryCode, snapshot)
+        ]);
         if (currentUser && currentUser.uid === user.uid) setSyncStatus("Salvato su Firebase");
       } catch (error) {
         console.error("Errore durante il salvataggio su Firebase:", error);
@@ -219,17 +247,20 @@ const db = getFirestore(firebaseApp);
 
   async function finishProfileSetup(user, restoredState, recoveryCode = null) {
     state = restoredState;
+    const code = recoveryCode || getOrCreateRecoveryCode(user.uid);
     const userRef = doc(db, "users", user.uid);
-    await setDoc(userRef, {
-      userCode: "MS-" + user.uid,
-      appState: state,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    }, { merge: true });
+    await Promise.all([
+      setDoc(userRef, {
+        userCode: "MS-" + user.uid,
+        appState: state,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }, { merge: true }),
+      saveRecoverySnapshot(user.uid, code, state)
+    ]);
     currentUser = user;
     pendingProfileUser = null;
     localStorage.setItem(STORAGE_KEY + ":" + user.uid, JSON.stringify(state));
-    const code = recoveryCode || getOrCreateRecoveryCode(user.uid);
     if (recoveryCode) localStorage.setItem(RECOVERY_CODE_KEY + ":" + user.uid, recoveryCode);
     document.getElementById("accountIdentity").textContent = "Sessione anonima";
     document.getElementById("accountCode").textContent = "Codice personale: " + code;
@@ -288,6 +319,7 @@ const db = getFirestore(firebaseApp);
       }
       document.getElementById("accountIdentity").textContent = "Sessione anonima";
       const recoveryCode = getOrCreateRecoveryCode(user.uid);
+      await saveRecoverySnapshot(user.uid, recoveryCode, state);
       document.getElementById("accountCode").textContent = "Codice personale: " + recoveryCode;
       authGate.hidden = true;
       document.getElementById("profileActions").hidden = true;
@@ -331,27 +363,30 @@ const db = getFirestore(firebaseApp);
       if (!pendingProfileUser) return;
       const file = document.getElementById("initialRestoreFile").files[0];
       const code = document.getElementById("restoreRecoveryCode").value.trim().toUpperCase();
-      if (!file) {
-        setAuthMessage("Seleziona prima il file JSON del backup.", true);
+      if (!/^[A-HJ-NP-Z2-9]{16}$/.test(code)) {
+        setAuthMessage("Inserisci il codice personale di 16 caratteri.", true);
         return;
       }
       restoreProfileButton.disabled = true;
       createProfileButton.disabled = true;
-      setAuthMessage("Verifica del backup e ripristino…");
+      setAuthMessage("Ricerca del profilo tramite codice…");
       try {
-        const firstParsed = JSON.parse(await file.text());
-        const encrypted = firstParsed && firstParsed.format === BACKUP_FORMAT;
-        if (encrypted && !/^[A-HJ-NP-Z2-9]{16}$/.test(code)) {
-          throw new Error("Inserisci il codice personale corretto di 16 caratteri.");
+        // Prima prova il recupero cloud con il solo codice.
+        let restored = await findRecoverySnapshot(code);
+        if (!restored && file) {
+          setAuthMessage("Profilo cloud non trovato: provo il backup JSON…");
+          restored = await readBackupFile(file, code);
         }
-        const restored = await readBackupFile(file, code);
-        if (!isValidState(restored)) throw new Error("Il file non contiene un backup Mensa Smart valido.");
-        await finishProfileSetup(pendingProfileUser, restored, encrypted ? code : null);
-        alert("Backup ripristinato correttamente. Il profilo è pronto su questo dispositivo.");
+        if (!restored) {
+          throw new Error("Nessun profilo trovato con questo codice. Se hai un backup JSON, selezionalo e riprova.");
+        }
+        if (!isValidState(restored)) throw new Error("I dati recuperati non sono un profilo Mensa Smart valido.");
+        await finishProfileSetup(pendingProfileUser, restored, code);
+        alert("Profilo ripristinato correttamente. Il file JSON non era necessario.");
       } catch (error) {
         console.error("Errore ripristino iniziale:", error);
         const message = error.name === "OperationError"
-          ? "Codice errato o file danneggiato. Controlla entrambi e riprova."
+          ? "Codice errato oppure backup JSON danneggiato."
           : error.message;
         setAuthMessage(message, true);
       } finally {
@@ -1069,10 +1104,14 @@ const db = getFirestore(firebaseApp);
         activeTab = "summary";
         if (!currentUser) throw new Error("Sessione Firebase non disponibile.");
         clearTimeout(remoteSaveTimer);
-        await setDoc(doc(db, "users", currentUser.uid), {
-          appState: state,
-          updatedAt: Date.now()
-        }, { merge: true });
+        const activeRecoveryCode = restoredRecoveryCode || getOrCreateRecoveryCode(currentUser.uid);
+        await Promise.all([
+          setDoc(doc(db, "users", currentUser.uid), {
+            appState: state,
+            updatedAt: Date.now()
+          }, { merge: true }),
+          saveRecoverySnapshot(currentUser.uid, activeRecoveryCode, state)
+        ]);
         localStorage.setItem(STORAGE_KEY + ":" + currentUser.uid, JSON.stringify(state));
         if (restoredRecoveryCode) {
           localStorage.setItem(RECOVERY_CODE_KEY + ":" + currentUser.uid, restoredRecoveryCode);
