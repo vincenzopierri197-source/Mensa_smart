@@ -1237,8 +1237,16 @@ const db = getFirestore(firebaseApp);
     root.querySelectorAll("[data-calendar-mode]").forEach(button => button.addEventListener("click", () => { calendarMode = button.dataset.calendarMode; render(); }));
     root.querySelector("[data-calendar-today]").addEventListener("click", () => { calendarCursor = new Date(); render(); });
     const shift = calendarMode === "month" ? -1 : calendarMode === "week" ? -7 : -1;
-    root.querySelector("[data-calendar-prev]").addEventListener("click", () => { if (calendarMode === "month") calendarCursor.setMonth(calendarCursor.getMonth() + shift); else calendarCursor.setDate(calendarCursor.getDate() + shift); render(); });
-    root.querySelector("[data-calendar-next]").addEventListener("click", () => { if (calendarMode === "month") calendarCursor.setMonth(calendarCursor.getMonth() + 1); else calendarCursor.setDate(calendarCursor.getDate() + (calendarMode === "week" ? 7 : 1)); render(); });
+    root.querySelector("[data-calendar-prev]").addEventListener("click", () => {
+      if (calendarMode === "month") { calendarCursor.setDate(1); calendarCursor.setMonth(calendarCursor.getMonth() - 1); }
+      else calendarCursor.setDate(calendarCursor.getDate() + shift);
+      render();
+    });
+    root.querySelector("[data-calendar-next]").addEventListener("click", () => {
+      if (calendarMode === "month") { calendarCursor.setDate(1); calendarCursor.setMonth(calendarCursor.getMonth() + 1); }
+      else calendarCursor.setDate(calendarCursor.getDate() + (calendarMode === "week" ? 7 : 1));
+      render();
+    });
     root.querySelector("#calendarAddNote").addEventListener("click", () => {
       activeTab = "notes"; render();
       const dateField = document.getElementById("noteDate"); if (dateField) dateField.value = selectedKey;
