@@ -70,6 +70,7 @@ const db = getFirestore(firebaseApp);
   let state = loadState();
   let activeTab = "summary";
   let currentUser = null;
+  let pendingProfileUser = null;
   let anonymousSignInPending = false;
   let remoteSaveTimer = null;
   let authLoadToken = 0;
@@ -205,12 +206,48 @@ const db = getFirestore(firebaseApp);
     return "Errore Firebase (" + code + "). " + (details || "Controlla la connessione e riprova.");
   }
 
+  function showProfileSetup(user, token) {
+    if (token !== authLoadToken) return;
+    pendingProfileUser = user;
+    currentUser = null;
+    document.getElementById("appShell").hidden = true;
+    document.getElementById("authGate").hidden = false;
+    document.getElementById("profileActions").hidden = false;
+    document.getElementById("authRetry").hidden = true;
+    setAuthMessage("È il tuo primo accesso su questo dispositivo. Crea un profilo oppure ripristina il tuo backup con codice e file JSON.");
+  }
+
+  async function finishProfileSetup(user, restoredState, recoveryCode = null) {
+    state = restoredState;
+    const userRef = doc(db, "users", user.uid);
+    await setDoc(userRef, {
+      userCode: "MS-" + user.uid,
+      appState: state,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    }, { merge: true });
+    currentUser = user;
+    pendingProfileUser = null;
+    localStorage.setItem(STORAGE_KEY + ":" + user.uid, JSON.stringify(state));
+    const code = recoveryCode || getOrCreateRecoveryCode(user.uid);
+    if (recoveryCode) localStorage.setItem(RECOVERY_CODE_KEY + ":" + user.uid, recoveryCode);
+    document.getElementById("accountIdentity").textContent = "Sessione anonima";
+    document.getElementById("accountCode").textContent = "Codice personale: " + code;
+    document.getElementById("authGate").hidden = true;
+    document.getElementById("profileActions").hidden = true;
+    document.getElementById("appShell").hidden = false;
+    setSyncStatus("Sincronizzato con Firebase");
+    render();
+  }
+
   async function loadUserData(user) {
     const token = ++authLoadToken;
     const authGate = document.getElementById("authGate");
     const appShell = document.getElementById("appShell");
     authGate.hidden = true;
     appShell.hidden = true;
+    document.getElementById("profileActions").hidden = true;
+    document.getElementById("authRetry").hidden = false;
     setAuthMessage("Caricamento dei dati…");
     try {
       const userRef = doc(db, "users", user.uid);
@@ -226,8 +263,12 @@ const db = getFirestore(firebaseApp);
           state = cached;
         } else if (legacy && confirm("Ho trovato dati salvati in questo browser. Vuoi importarli nel tuo nuovo account Firebase?")) {
           state = legacy;
+        } else if (!legacy) {
+          showProfileSetup(user, token);
+          return;
         } else {
-          state = createDefaultState();
+          showProfileSetup(user, token);
+          return;
         }
         await setDoc(userRef, {
           userCode: "MS-" + user.uid,
@@ -239,6 +280,7 @@ const db = getFirestore(firebaseApp);
       if (token !== authLoadToken) return;
 
       currentUser = user;
+      pendingProfileUser = null;
       try {
         localStorage.setItem(STORAGE_KEY + ":" + user.uid, JSON.stringify(state));
       } catch (e) {
@@ -248,6 +290,7 @@ const db = getFirestore(firebaseApp);
       const recoveryCode = getOrCreateRecoveryCode(user.uid);
       document.getElementById("accountCode").textContent = "Codice personale: " + recoveryCode;
       authGate.hidden = true;
+      document.getElementById("profileActions").hidden = true;
       appShell.hidden = false;
       setSyncStatus("Sincronizzato con Firebase");
       render();
@@ -257,12 +300,65 @@ const db = getFirestore(firebaseApp);
       currentUser = null;
       authGate.hidden = false;
       appShell.hidden = true;
+      document.getElementById("profileActions").hidden = true;
+      document.getElementById("authRetry").hidden = false;
       setAuthMessage(authErrorMessage(error), true);
     }
   }
 
   async function initializeAuthentication() {
     const retryButton = document.getElementById("authRetry");
+    const createProfileButton = document.getElementById("createProfileBtn");
+    const restoreProfileButton = document.getElementById("restoreProfileBtn");
+
+    createProfileButton.addEventListener("click", async () => {
+      if (!pendingProfileUser) return;
+      createProfileButton.disabled = true;
+      restoreProfileButton.disabled = true;
+      setAuthMessage("Creazione del profilo…");
+      try {
+        await finishProfileSetup(pendingProfileUser, createDefaultState());
+      } catch (error) {
+        console.error("Errore creazione profilo:", error);
+        setAuthMessage(authErrorMessage(error), true);
+      } finally {
+        createProfileButton.disabled = false;
+        restoreProfileButton.disabled = false;
+      }
+    });
+
+    restoreProfileButton.addEventListener("click", async () => {
+      if (!pendingProfileUser) return;
+      const file = document.getElementById("initialRestoreFile").files[0];
+      const code = document.getElementById("restoreRecoveryCode").value.trim().toUpperCase();
+      if (!file) {
+        setAuthMessage("Seleziona prima il file JSON del backup.", true);
+        return;
+      }
+      restoreProfileButton.disabled = true;
+      createProfileButton.disabled = true;
+      setAuthMessage("Verifica del backup e ripristino…");
+      try {
+        const firstParsed = JSON.parse(await file.text());
+        const encrypted = firstParsed && firstParsed.format === BACKUP_FORMAT;
+        if (encrypted && !/^[A-HJ-NP-Z2-9]{16}$/.test(code)) {
+          throw new Error("Inserisci il codice personale corretto di 16 caratteri.");
+        }
+        const restored = await readBackupFile(file, code);
+        if (!isValidState(restored)) throw new Error("Il file non contiene un backup Mensa Smart valido.");
+        await finishProfileSetup(pendingProfileUser, restored, encrypted ? code : null);
+        alert("Backup ripristinato correttamente. Il profilo è pronto su questo dispositivo.");
+      } catch (error) {
+        console.error("Errore ripristino iniziale:", error);
+        const message = error.name === "OperationError"
+          ? "Codice errato o file danneggiato. Controlla entrambi e riprova."
+          : error.message;
+        setAuthMessage(message, true);
+      } finally {
+        restoreProfileButton.disabled = false;
+        createProfileButton.disabled = false;
+      }
+    });
 
     // Mantiene la sessione anonima nel browser anche dopo chiusura e riapertura.
     // È lo stesso criterio già adottato da Marvel Tracker.
