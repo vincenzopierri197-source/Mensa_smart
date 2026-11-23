@@ -891,3 +891,52 @@ input[type="checkbox"].chk-voucher {
     z-index: 1;
   }
 }
+
+/* Mobile-first usability fixes (phone widths) */
+@media (max-width: 600px) {
+  body { padding-bottom: 24px; }
+  .topbar { padding: 14px 12px; }
+  .brand { gap: 10px; }
+  .logo-box { width: 38px; height: 38px; flex: 0 0 38px; }
+  .brand h1 { font-size: 1.05rem; }
+  .subtitle { font-size: .75rem; line-height: 1.35; }
+  .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rate-pill { min-width: 0; padding: 7px 8px; }
+  .rate-pill label { line-height: 1.2; }
+  .rate-pill input { width: 62px; min-width: 0; }
+  .controls .btn { min-width: 0; width: 100%; min-height: 44px; }
+  .navbar-inner { padding: 8px 10px; }
+  .btn-add-month { min-height: 44px; }
+  .container { padding-inline: 8px; margin-top: 12px; }
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .kpi-card { padding: 12px; border-radius: 12px; }
+  .kpi-label { font-size: .7rem; }
+  .kpi-value { font-size: 1.25rem; overflow-wrap: anywhere; }
+  .kpi-sub { font-size: .72rem; }
+  .card-header { padding: 12px; gap: 8px; }
+  .card-header h2 { font-size: .95rem; }
+  .table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+  .table-wrap table { min-width: 720px; }
+  .table-wrap th { position: static; }
+  .table-wrap th, .table-wrap td { padding: 9px 8px; font-size: .78rem; }
+  .table-wrap input[type=checkbox] { width: 24px; height: 24px; }
+  .sidebar-sticky { gap: 12px; }
+  .sidebar-sticky .card > div[style*="padding"] { padding: 12px !important; }
+  .summary-row { align-items: flex-start; font-size: .82rem; gap: 8px; }
+  .summary-row strong { font-size: .9rem; }
+  .paid-input-row { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .paid-input-row input, .btn-settle { width: 100%; min-height: 44px; }
+  .status-banner { padding: 12px 8px; font-size: .9rem; }
+  .chart-box { padding: 12px; }
+  .chart-bars { gap: 8px; height: 190px; }
+  .bar-group { min-width: 48px; }
+  .modal-card { max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .modal-body, .modal-footer { padding: 14px; }
+}
+@media (max-width: 360px) {
+  .controls { grid-template-columns: minmax(0, 1fr); }
+  .navbar-inner { grid-template-columns: minmax(0, 1fr); }
+  .btn-add-month { width: 100%; }
+  .kpi-grid { grid-template-columns: minmax(0, 1fr); }
+  .brand h1 { font-size: 1rem; }
+}
