@@ -74,6 +74,81 @@ const db = getFirestore(firebaseApp);
   let remoteSaveTimer = null;
   let authLoadToken = 0;
 
+  const RECOVERY_CODE_KEY = "mensa_smart_recovery_code_v1";
+  const BACKUP_FORMAT = "mensa-smart-encrypted-backup";
+  const BACKUP_ITERATIONS = 310000;
+  const RECOVERY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+  function getOrCreateRecoveryCode(uid) {
+    const key = RECOVERY_CODE_KEY + ":" + uid;
+    let code = localStorage.getItem(key);
+    if (!code || !/^[A-HJ-NP-Z2-9]{16}$/.test(code)) {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      code = Array.from(bytes, (b) => RECOVERY_ALPHABET[b % RECOVERY_ALPHABET.length]).join("");
+      localStorage.setItem(key, code);
+    }
+    return code;
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = "";
+    bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+    return btoa(binary);
+  }
+
+  function base64ToBytes(value) {
+    const binary = atob(value);
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  }
+
+  async function deriveBackupKey(code, salt) {
+    const material = await crypto.subtle.importKey(
+      "raw", new TextEncoder().encode(code), "PBKDF2", false, ["deriveKey"]
+    );
+    return crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: BACKUP_ITERATIONS, hash: "SHA-256" },
+      material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+    );
+  }
+
+  async function createEncryptedBackup(snapshot, code) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveBackupKey(code, salt);
+    const plaintext = new TextEncoder().encode(JSON.stringify(snapshot));
+    const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+    return {
+      format: BACKUP_FORMAT,
+      version: 1,
+      kdf: "PBKDF2-SHA-256",
+      iterations: BACKUP_ITERATIONS,
+      cipher: "AES-256-GCM",
+      salt: bytesToBase64(salt),
+      iv: bytesToBase64(iv),
+      ciphertext: bytesToBase64(new Uint8Array(encrypted)),
+      createdAt: new Date().toISOString()
+    };
+  }
+
+  async function readBackupFile(file, code) {
+    const parsed = JSON.parse(await file.text());
+    if (parsed && parsed.format === BACKUP_FORMAT && parsed.version === 1) {
+      if (!code || !/^[A-HJ-NP-Z2-9]{16}$/.test(code)) {
+        throw new Error("Inserisci il codice personale di 16 caratteri.");
+      }
+      const key = await deriveBackupKey(code, base64ToBytes(parsed.salt));
+      const decrypted = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: base64ToBytes(parsed.iv) },
+        key,
+        base64ToBytes(parsed.ciphertext)
+      );
+      return JSON.parse(new TextDecoder().decode(decrypted));
+    }
+    // Compatibilità: accetta anche i vecchi backup Mensa Smart non cifrati.
+    return parsed;
+  }
+
   function setSyncStatus(message) {
     const status = document.getElementById("syncStatus");
     if (status) status.textContent = message;
@@ -170,7 +245,8 @@ const db = getFirestore(firebaseApp);
         console.warn("Impossibile salvare la copia locale:", e);
       }
       document.getElementById("accountIdentity").textContent = "Sessione anonima";
-      document.getElementById("accountCode").textContent = "Codice personale: MS-" + user.uid;
+      const recoveryCode = getOrCreateRecoveryCode(user.uid);
+      document.getElementById("accountCode").textContent = "Codice personale: " + recoveryCode;
       authGate.hidden = true;
       appShell.hidden = false;
       setSyncStatus("Sincronizzato con Firebase");
@@ -824,41 +900,76 @@ const db = getFirestore(firebaseApp);
       URL.revokeObjectURL(url);
     });
 
-    document.getElementById("btnBackupJson").addEventListener("click", () => {
-      const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "Backup_Mensa.json";
-      a.click();
-      URL.revokeObjectURL(url);
+    document.getElementById("btnBackupJson").addEventListener("click", async () => {
+      try {
+        if (!currentUser) throw new Error("Account non ancora pronto.");
+        const code = getOrCreateRecoveryCode(currentUser.uid);
+        const encryptedBackup = await createEncryptedBackup(state, code);
+        const blob = new Blob([JSON.stringify(encryptedBackup, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "Backup_Mensa_Smart_Cifrato.json";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        alert("Backup cifrato scaricato. Conserva insieme il file e il tuo codice personale di 16 caratteri.");
+      } catch (error) {
+        console.error("Errore creazione backup:", error);
+        alert("Non è stato possibile creare il backup: " + error.message);
+      }
+    });
+
+    document.getElementById("btnCopyRecoveryCode").addEventListener("click", async () => {
+      try {
+        const code = getOrCreateRecoveryCode(currentUser.uid);
+        await navigator.clipboard.writeText(code);
+        alert("Codice personale copiato.");
+      } catch (error) {
+        alert("Copia automatica non disponibile. Seleziona e copia il codice mostrato.");
+      }
     });
 
     document.getElementById("btnRestoreJson").addEventListener("click", () => {
       document.getElementById("restoreFileInput").click();
     });
 
-    document.getElementById("restoreFileInput").addEventListener("change", (e) => {
+    document.getElementById("restoreFileInput").addEventListener("change", async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const parsed = JSON.parse(ev.target.result);
-          if (parsed && Array.isArray(parsed.months)) {
-            state = parsed;
-            activeTab = "summary";
-            saveState();
-            render();
-            alert("Backup ripristinato con successo!");
-          } else {
-            alert("File di backup non valido.");
-          }
-        } catch (err) {
-          alert("Errore durante la lettura del file JSON.");
+      try {
+        const firstText = await file.text();
+        const firstParsed = JSON.parse(firstText);
+        let parsed;
+        if (firstParsed && firstParsed.format === BACKUP_FORMAT) {
+          const code = prompt("Inserisci il codice personale di 16 caratteri associato al backup:");
+          if (code === null) return;
+          parsed = await readBackupFile(file, code.trim().toUpperCase());
+        } else {
+          parsed = firstParsed;
         }
-      };
-      reader.readAsText(file);
+        if (!isValidState(parsed)) throw new Error("Il file non contiene un backup Mensa Smart valido.");
+        if (!confirm("Il ripristino sostituirà i dati attualmente presenti su questo dispositivo e sul relativo account Firebase. Vuoi continuare?")) return;
+        state = parsed;
+        activeTab = "summary";
+        if (!currentUser) throw new Error("Sessione Firebase non disponibile.");
+        clearTimeout(remoteSaveTimer);
+        await setDoc(doc(db, "users", currentUser.uid), {
+          appState: state,
+          updatedAt: Date.now()
+        }, { merge: true });
+        localStorage.setItem(STORAGE_KEY + ":" + currentUser.uid, JSON.stringify(state));
+        render();
+        setSyncStatus("Backup ripristinato e sincronizzato");
+        alert("Backup ripristinato con successo su questo dispositivo.");
+      } catch (error) {
+        console.error("Errore ripristino backup:", error);
+        const message = error.name === "OperationError"
+          ? "Codice errato o file danneggiato. Controlla il codice personale e riprova."
+          : error.message;
+        alert("Ripristino non riuscito: " + message);
+      } finally {
+        e.target.value = "";
+      }
     });
 
     render();
