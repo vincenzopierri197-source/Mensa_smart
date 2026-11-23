@@ -293,10 +293,18 @@ const db = getFirestore(firebaseApp);
           }, { merge: true });
         });
         if (currentUser && currentUser.uid === user.uid) {
-          state = committedState;
+          // Conserva eventuali altre modifiche fatte mentre la transazione era in corso.
+          const editsMadeDuringSave = cloneState(state);
+          const finalState = mergeConcurrentState(localSnapshot, editsMadeDuringSave, committedState);
+          state = finalState;
           lastSharedState = cloneState(committedState);
           localStorage.setItem(STORAGE_KEY + ":" + user.uid, JSON.stringify(state));
-          setSyncStatus("Salvato e sincronizzato su Firebase");
+          if (!sameValue(finalState, committedState)) {
+            setSyncStatus("Sincronizzo altre modifiche…");
+            saveState();
+          } else {
+            setSyncStatus("Salvato e sincronizzato su Firebase");
+          }
           render();
         }
       } catch (error) {
