@@ -7,6 +7,24 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <section id="authGate" class="auth-gate">
+    <div class="auth-card">
+      <div class="logo-box">🍽️</div>
+      <h1 id="authTitle">Accedi a Mensa Smart</h1>
+      <p>I tuoi dati verranno salvati nel tuo account e sincronizzati tra i tuoi dispositivi.</p>
+      <form id="authForm">
+        <label for="authEmail">Email</label>
+        <input id="authEmail" type="email" autocomplete="email" required>
+        <label for="authPassword">Password</label>
+        <input id="authPassword" type="password" autocomplete="current-password" minlength="6" required>
+        <button type="submit" class="btn btn-primary auth-submit" id="authSubmit">Accedi</button>
+      </form>
+      <p id="authMessage" class="auth-message" role="status" aria-live="polite"></p>
+      <button type="button" class="auth-link" id="authToggle">Non hai un account? Creane uno</button>
+      <button type="button" class="btn btn-secondary auth-signout" id="authSignOut" hidden>Esci dall’account</button>
+    </div>
+  </section>
+  <div id="appShell" hidden>
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand">
@@ -31,6 +49,8 @@
         <button type="button" class="btn btn-restore" id="btnRestoreJson">📂 Ripristina</button>
         <input type="file" id="restoreFileInput" accept=".json" style="display:none;">
         <button type="button" class="btn btn-print" onclick="window.print()">🖨️ Stampa</button>
+        <div class="account-box"><span id="accountIdentity"></span><small id="accountCode"></small><small id="syncStatus" role="status">Sincronizzato</small></div>
+        <button type="button" class="btn btn-secondary" id="btnSignOut">Esci</button>
       </div>
     </div>
   </header>
@@ -82,6 +102,7 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  </div>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
