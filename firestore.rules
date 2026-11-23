@@ -2,17 +2,8 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Ogni sessione anonima può leggere e modificare esclusivamente
-    // il proprio documento. Nessun utente può consultare i dati altrui.
     match /users/{userId} {
-      allow read, create, update, delete: if request.auth != null
-        && request.auth.uid == userId
-        && request.auth.token.firebase.sign_in_provider == "anonymous";
-    }
-
-    // Tutte le altre collezioni restano private per impostazione predefinita.
-    match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
