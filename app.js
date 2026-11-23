@@ -673,6 +673,85 @@ const db = getFirestore(firebaseApp);
     return statsMap;
   }
 
+
+  // Moduli personali: ore, recuperi, assenze, campi e promemoria.
+  function ensureWorkData() {
+    state.workEntries ||= []; state.leaveEntries ||= [];
+    state.leaveConfig ||= { annualDays: 0, carriedDays: 0 };
+    state.customFieldDefs ||= []; state.customFieldValues ||= {};
+    state.reminders ||= [];
+  }
+  function minutesBetween(start, end) {
+    if (!start || !end) return 0;
+    const [sh,sm]=start.split(":").map(Number), [eh,em]=end.split(":").map(Number);
+    let n=eh*60+em-(sh*60+sm); if(n<0)n+=1440; return Math.max(0,n);
+  }
+  function fmtHours(mins) { const sign=mins<0?"−":""; const n=Math.abs(Math.round(mins)); return sign+Math.floor(n/60)+"h "+String(n%60).padStart(2,"0")+"m"; }
+  function renderWorkView() {
+    ensureWorkData();
+    const root=document.getElementById("appRoot");
+    const rows=[...state.workEntries].sort((a,b)=>b.date.localeCompare(a.date));
+    const total=rows.reduce((sum,x)=>sum+Number(x.workedMinutes||0),0);
+    const overtime=rows.reduce((sum,x)=>sum+Number(x.overtimeMinutes||0),0);
+    root.innerHTML=`<section class="personal-page"><h2>⏱️ Ore lavorate</h2><p class="personal-muted">Registra entrata, uscita e pause. Il saldo confronta le ore effettive con l'orario giornaliero previsto.</p>
+      <form id="workForm" class="personal-form">
+        <label>Data<input name="date" type="date" required value="${localDateKey(new Date())}"></label>
+        <label>Entrata<input name="start" type="time" required value="08:00"></label>
+        <label>Uscita<input name="end" type="time" required value="17:00"></label>
+        <label>Pause (minuti)<input name="breakMinutes" type="number" min="0" value="60"></label>
+        <label>Ore previste al giorno<input name="targetHours" type="number" min="0" max="24" step="0.25" value="8"></label>
+        <label>Nota<input name="note" maxlength="300" placeholder="Facoltativa"></label>
+        <button class="btn btn-primary" type="submit">＋ Registra giornata</button>
+      </form>
+      <div class="personal-kpis"><article><small>Ore lavorate totali</small><strong>${fmtHours(total)}</strong></article><article><small>Saldo straordinari</small><strong>${fmtHours(overtime)}</strong></article></div>
+      <h3>Registro presenze</h3><div class="personal-table"><table><thead><tr><th>Data</th><th>Entrata–uscita</th><th>Pause</th><th>Lavorate</th><th>Saldo</th><th></th></tr></thead><tbody>${rows.map(x=>`<tr><td>${escapeNoteHtml(x.date)}</td><td>${escapeNoteHtml(x.start)}–${escapeNoteHtml(x.end)}</td><td>${x.breakMinutes} min</td><td>${fmtHours(x.workedMinutes)}</td><td>${fmtHours(x.overtimeMinutes)}</td><td><button class="btn btn-danger" data-work-delete="${x.id}">Elimina</button></td></tr>`).join("")||'<tr><td colspan="6">Nessuna giornata registrata.</td></tr>'}</tbody></table></div></section>`;
+    root.querySelector("#workForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.currentTarget), date=f.get("date");if(state.workEntries.some(x=>x.date===date)){alert("Esiste già una registrazione per questa data. Eliminala prima di inserirne un'altra.");return;}const worked=Math.max(0,minutesBetween(f.get("start"),f.get("end"))-Number(f.get("breakMinutes")||0));const target=Math.round(Number(f.get("targetHours")||8)*60);state.workEntries.push({id:crypto.randomUUID(),date,start:f.get("start"),end:f.get("end"),breakMinutes:Number(f.get("breakMinutes")||0),workedMinutes:worked,overtimeMinutes:worked-target,targetMinutes:target,note:f.get("note")||""});saveState();render();});
+    root.querySelectorAll("[data-work-delete]").forEach(b=>b.addEventListener("click",()=>{if(confirm("Eliminare la registrazione?")){state.workEntries=state.workEntries.filter(x=>x.id!==b.dataset.workDelete);saveState();render();}}));
+  }
+  function renderOvertimeView() {
+    ensureWorkData();
+    const rows=[...state.workEntries].sort((a,b)=>a.date.localeCompare(b.date));
+    const calculated=rows.reduce((n,x)=>n+Number(x.overtimeMinutes||0),0);
+    const adjustments=rows.reduce((n,x)=>n+Number(x.adjustmentMinutes||0),0);
+    const balance=calculated+adjustments;
+    const root=document.getElementById("appRoot");
+    root.innerHTML=`<section class="personal-page"><h2>⚖️ Straordinari e recuperi</h2><p class="personal-muted">Saldo progressivo calcolato sulle ore registrate, con possibilità di annotare recuperi o correzioni manuali.</p><div class="personal-kpis"><article><small>Saldo maturato</small><strong>${fmtHours(balance)}</strong></article><article><small>Da giornate registrate</small><strong>${fmtHours(calculated)}</strong></article></div>
+      <form id="adjustForm" class="personal-form"><label>Data<input name="date" type="date" required value="${localDateKey(new Date())}"></label><label>Tipo<select name="kind"><option value="positive">Aggiungi ore</option><option value="negative">Recupero / sottrai ore</option></select></label><label>Ore<input name="hours" type="number" min="0.25" step="0.25" required></label><label>Motivo<input name="note" maxlength="300" placeholder="Motivo"></label><button class="btn btn-primary">＋ Registra movimento</button></form>
+      <h3>Movimenti</h3><div class="personal-table"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Variazione</th></tr></thead><tbody>${rows.filter(x=>x.adjustmentMinutes).map(x=>`<tr><td>${escapeNoteHtml(x.date)}</td><td>${escapeNoteHtml(x.note||"Recupero")}</td><td>${fmtHours(x.adjustmentMinutes)}</td></tr>`).join("")||'<tr><td colspan="3">Nessun movimento manuale.</td></tr>'}</tbody></table></div></section>`;
+    root.querySelector("#adjustForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.currentTarget),entry={id:crypto.randomUUID(),date:f.get("date"),adjustmentMinutes:Math.round(Number(f.get("hours"))*60)*(f.get("kind")==="negative"?-1:1),note:f.get("note")||"Movimento manuale",workedMinutes:0,overtimeMinutes:0};state.workEntries.push(entry);saveState();render();});
+  }
+  function renderLeaveView() {
+    ensureWorkData();const root=document.getElementById("appRoot"),cfg=state.leaveConfig;
+    const used=state.leaveEntries.reduce((n,x)=>n+Number(x.days||0),0),remaining=Number(cfg.annualDays||0)+Number(cfg.carriedDays||0)-used;
+    root.innerHTML=`<section class="personal-page"><h2>🏖️ Ferie e permessi</h2><p class="personal-muted">Imposta il tuo monte giorni e registra ferie o permessi. Il residuo si aggiorna automaticamente.</p>
+      <form id="leaveConfigForm" class="personal-form"><label>Giorni annuali maturati<input name="annualDays" type="number" min="0" step="0.5" value="${cfg.annualDays}"></label><label>Residuo riportato<input name="carriedDays" type="number" min="0" step="0.5" value="${cfg.carriedDays}"></label><button class="btn btn-secondary">Salva monte giorni</button></form>
+      <div class="personal-kpis"><article><small>Giorni disponibili</small><strong>${remaining}</strong></article><article><small>Giorni utilizzati</small><strong>${used}</strong></article></div>
+      <form id="leaveForm" class="personal-form"><label>Tipo<select name="kind"><option>Ferie</option><option>Permesso</option><option>Malattia</option><option>Altro</option></select></label><label>Dal<input name="start" type="date" required></label><label>Al<input name="end" type="date" required></label><label>Giorni da scalare<input name="days" type="number" min="0.5" step="0.5" required></label><label>Note<input name="note" maxlength="300"></label><button class="btn btn-primary">＋ Registra assenza</button></form>
+      <div class="personal-table"><table><thead><tr><th>Tipo</th><th>Periodo</th><th>Giorni</th><th></th></tr></thead><tbody>${state.leaveEntries.map(x=>`<tr><td>${escapeNoteHtml(x.kind)}</td><td>${escapeNoteHtml(x.start)} – ${escapeNoteHtml(x.end)}</td><td>${x.days}</td><td><button class="btn btn-danger" data-leave-delete="${x.id}">Elimina</button></td></tr>`).join("")||'<tr><td colspan="4">Nessuna assenza registrata.</td></tr>'}</tbody></table></div></section>`;
+    root.querySelector("#leaveConfigForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.currentTarget);cfg.annualDays=Number(f.get("annualDays")||0);cfg.carriedDays=Number(f.get("carriedDays")||0);saveState();render();});
+    root.querySelector("#leaveForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.currentTarget);if(f.get("end")<f.get("start")){alert("La data finale precede quella iniziale.");return;}state.leaveEntries.push({id:crypto.randomUUID(),kind:f.get("kind"),start:f.get("start"),end:f.get("end"),days:Number(f.get("days")),note:f.get("note")||""});saveState();render();});
+    root.querySelectorAll("[data-leave-delete]").forEach(b=>b.addEventListener("click",()=>{if(confirm("Eliminare questa assenza?")){state.leaveEntries=state.leaveEntries.filter(x=>x.id!==b.dataset.leaveDelete);saveState();render();}}));
+  }
+  function renderCustomFieldsView() {
+    ensureWorkData();const root=document.getElementById("appRoot");
+    root.innerHTML=`<section class="personal-page"><h2>🧩 Campi personalizzati</h2><p class="personal-muted">Crea campi aggiuntivi per annotare le informazioni che ti servono.</p>
+      <form id="fieldForm" class="personal-form"><label>Nome del campo<input name="label" maxlength="60" required placeholder="Es. Reparto, sede, referente"></label><label>Tipo<select name="type"><option value="text">Testo</option><option value="date">Data</option><option value="number">Numero</option></select></label><button class="btn btn-primary">＋ Aggiungi campo</button></form>
+      <div class="personal-form">${state.customFieldDefs.map(d=>`<label>${escapeNoteHtml(d.label)}<input data-custom-value="${d.id}" type="${d.type}" value="${escapeNoteHtml(state.customFieldValues[d.id]||"")}"></label><button class="btn btn-danger" data-field-delete="${d.id}">Elimina campo</button>`).join("")||"Nessun campo personalizzato creato."}<button class="btn btn-secondary" id="saveCustomValues">Salva valori</button></div></section>`;
+    root.querySelector("#fieldForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.currentTarget);state.customFieldDefs.push({id:crypto.randomUUID(),label:f.get("label").trim(),type:f.get("type")});saveState();render();});
+    root.querySelector("#saveCustomValues").addEventListener("click",()=>{root.querySelectorAll("[data-custom-value]").forEach(el=>state.customFieldValues[el.dataset.customValue]=el.value);saveState();alert("Valori salvati.");});
+    root.querySelectorAll("[data-field-delete]").forEach(b=>b.addEventListener("click",()=>{if(confirm("Eliminare il campo e il suo valore?")){state.customFieldDefs=state.customFieldDefs.filter(x=>x.id!==b.dataset.fieldDelete);delete state.customFieldValues[b.dataset.fieldDelete];saveState();render();}}));
+  }
+  function renderRemindersView() {
+    ensureWorkData();const root=document.getElementById("appRoot"),today=localDateKey(new Date());
+    const rows=[...state.reminders].sort((a,b)=>a.date.localeCompare(b.date));
+    root.innerHTML=`<section class="personal-page"><h2>🔔 Promemoria e scadenze</h2><p class="personal-muted">Annota ciò che non vuoi dimenticare e segna gli elementi completati.</p>
+      <form id="reminderForm" class="personal-form"><label>Promemoria<input name="title" maxlength="160" required placeholder="Es. Rinnovo documento"></label><label>Scadenza<input name="date" type="date" required></label><label>Dettagli<input name="details" maxlength="1000"></label><button class="btn btn-primary">＋ Aggiungi promemoria</button></form>
+      <div class="personal-list">${rows.map(x=>`<article class="personal-item ${x.done?"is-done":""}"><div><strong>${escapeNoteHtml(x.title)}</strong><small>${escapeNoteHtml(x.date)} ${x.date<today&&!x.done?" · SCADUTO":""}</small><p>${escapeNoteHtml(x.details||"")}</p></div><div><button class="btn btn-secondary" data-reminder-done="${x.id}">${x.done?"Riapri":"Completa"}</button> <button class="btn btn-danger" data-reminder-delete="${x.id}">Elimina</button></div></article>`).join("")||'<p class="notes-empty">Nessun promemoria inserito.</p>'}</div></section>`;
+    root.querySelector("#reminderForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.currentTarget);state.reminders.push({id:crypto.randomUUID(),title:f.get("title").trim(),date:f.get("date"),details:f.get("details")||"",done:false});saveState();render();});
+    root.querySelectorAll("[data-reminder-done]").forEach(b=>b.addEventListener("click",()=>{const x=state.reminders.find(r=>r.id===b.dataset.reminderDone);if(x)x.done=!x.done;saveState();render();}));
+    root.querySelectorAll("[data-reminder-delete]").forEach(b=>b.addEventListener("click",()=>{if(confirm("Eliminare il promemoria?")){state.reminders=state.reminders.filter(x=>x.id!==b.dataset.reminderDelete);saveState();render();}}));
+  }
+
   function renderTabs() {
     const container = document.getElementById("tabsContainer");
     if (!container) return;
@@ -687,6 +766,9 @@ const db = getFirestore(firebaseApp);
       render();
     });
     container.appendChild(sumBtn);
+
+    const moduleTabs = [["work","⏱️ Ore lavorate"],["overtime","⚖️ Straordinari"],["leave","🏖️ Ferie e permessi"],["custom","🧩 Campi"],["reminders","🔔 Promemoria"]];
+    moduleTabs.forEach(([key,label]) => { const btn=document.createElement("button"); btn.type="button"; btn.className="tab-btn"+(activeTab===key?" active":""); btn.textContent=label; btn.addEventListener("click",()=>{activeTab=key;render();}); container.appendChild(btn); });
 
     const notesBtn = document.createElement("button");
     notesBtn.type = "button";
@@ -1110,7 +1192,8 @@ const db = getFirestore(firebaseApp);
           <label for="noteTitle">Titolo</label>
           <input id="noteTitle" maxlength="120" placeholder="Titolo della nota (facoltativo)">
           <label for="noteDate">Data</label>
-          <input id="noteDate" type="date" value="${today}">
+          <input id="noteDate" type="date" value="">
+          <small>Lascia vuoto per una nota senza data.</small>
           <label for="noteBody">Nota</label>
           <textarea id="noteBody" rows="5" maxlength="10000" placeholder="Scrivi qui il tuo appunto…"></textarea>
           <button class="btn btn-primary" type="submit">＋ Salva nota</button>
@@ -1118,7 +1201,7 @@ const db = getFirestore(firebaseApp);
         <div class="notes-list">
           ${notes.length ? notes.map(note => `
             <article class="note-card${note.pinned ? " pinned" : ""}" data-note-id="${escapeNoteHtml(note.id)}">
-              <div class="note-card-top"><time>${escapeNoteHtml(note.date || "")}</time>${note.pinned ? '<span class="note-pin">📌 In evidenza</span>' : ""}</div>
+              <div class="note-card-top"><time>${note.date ? escapeNoteHtml(note.date) : "Senza data"} </time>${note.pinned ? '<span class="note-pin">📌 In evidenza</span>' : ""}</div>
               <h3>${escapeNoteHtml(note.title || "Nota senza titolo")}</h3>
               <p class="note-content">${escapeNoteHtml(note.body).replace(/\n/g, "<br>")}</p>
               <div class="note-actions">
@@ -1134,7 +1217,7 @@ const db = getFirestore(firebaseApp);
       event.preventDefault();
       const body = root.querySelector("#noteBody").value.trim();
       const title = root.querySelector("#noteTitle").value.trim();
-      const date = root.querySelector("#noteDate").value || today;
+      const date = root.querySelector("#noteDate").value || "";
       if (!body && !title) {
         alert("Scrivi almeno il titolo o il contenuto della nota.");
         return;
@@ -1269,6 +1352,11 @@ const db = getFirestore(firebaseApp);
       renderNotesView();
     } else if (activeTab === "calendar") {
       renderCalendarView();
+    } else if (activeTab === "work") { renderWorkView();
+    } else if (activeTab === "overtime") { renderOvertimeView();
+    } else if (activeTab === "leave") { renderLeaveView();
+    } else if (activeTab === "custom") { renderCustomFieldsView();
+    } else if (activeTab === "reminders") { renderRemindersView();
     } else {
       renderMonthView(activeTab, statsMap);
     }
