@@ -308,7 +308,8 @@ const db = getFirestore(firebaseApp);
           } else {
             setSyncStatus("Salvato e sincronizzato su Firebase");
           }
-          render();
+          // Non ricostruire l'intera schermata dopo il salvataggio remoto:
+          // su iPhone questo sposta il layout e fa perdere il focus ai campi.
         }
       } catch (error) {
         console.error("Errore durante il salvataggio su Firebase:", error);
