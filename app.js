@@ -313,7 +313,13 @@ const db = getFirestore(firebaseApp);
         }
       } catch (error) {
         console.error("Errore durante il salvataggio su Firebase:", error);
-        if (currentUser && currentUser.uid === user.uid) setSyncStatus("Errore di sincronizzazione");
+        if (currentUser && currentUser.uid === user.uid) {
+          setSyncStatus("Offline · salvataggio locale, nuovo tentativo automatico");
+          clearTimeout(remoteSaveTimer);
+          remoteSaveTimer = setTimeout(() => {
+            if (currentUser && currentUser.uid === user.uid && sharedRecoveryCode) saveState();
+          }, 5000);
+        }
       }
     }, 350);
   }
@@ -511,9 +517,14 @@ const db = getFirestore(firebaseApp);
       setAuthMessage("Ricerca del profilo tramite codice…");
       try {
         // Prima prova il recupero cloud con il solo codice.
-        let restored = await findRecoverySnapshot(code);
+        let restored = null;
+        try {
+          restored = await findRecoverySnapshot(code);
+        } catch (cloudError) {
+          console.warn("Recupero cloud non disponibile; provo il backup locale:", cloudError);
+        }
         if (!restored && file) {
-          setAuthMessage("Profilo cloud non trovato: provo il backup JSON…");
+          setAuthMessage("Profilo cloud non trovato o non raggiungibile: provo il backup JSON…");
           restored = await readBackupFile(file, code);
         }
         if (!restored) {
