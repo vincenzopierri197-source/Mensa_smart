@@ -313,7 +313,13 @@ const db = getFirestore(firebaseApp);
         }
       } catch (error) {
         console.error("Errore durante il salvataggio su Firebase:", error);
-        if (currentUser && currentUser.uid === user.uid) setSyncStatus("Errore di sincronizzazione");
+        if (currentUser && currentUser.uid === user.uid) {
+          setSyncStatus("Offline · salvataggio locale, nuovo tentativo automatico");
+          clearTimeout(remoteSaveTimer);
+          remoteSaveTimer = setTimeout(() => {
+            if (currentUser && currentUser.uid === user.uid && sharedRecoveryCode) saveState();
+          }, 5000);
+        }
       }
     }, 350);
   }
@@ -356,37 +362,37 @@ const db = getFirestore(firebaseApp);
     const code = recoveryCode || getOrCreateRecoveryCode(user.uid);
     const recoveryRef = await getRecoveryDocumentRef(code);
     let initialState = restoredState;
-
-    // Se l'archivio esiste già, non lo sovrascriviamo con la copia
-    // appena caricata: il documento remoto è sempre la fonte autorevole.
-    await runTransaction(db, async (transaction) => {
-      const existing = await transaction.get(recoveryRef);
-      if (existing.exists() && isValidState(existing.data().appState)) {
-        initialState = existing.data().appState;
-      } else {
-        transaction.set(recoveryRef, {
-          ownerUid: user.uid,
-          appState: initialState,
-          updatedAt: Date.now()
-        }, { merge: true });
-      }
-    });
+    let cloudReady = false;
+    try {
+      await runTransaction(db, async (transaction) => {
+        const existing = await transaction.get(recoveryRef);
+        if (existing.exists() && isValidState(existing.data().appState)) initialState = existing.data().appState;
+        else transaction.set(recoveryRef, { ownerUid: user.uid, appState: initialState, updatedAt: Date.now() }, { merge: true });
+      });
+      cloudReady = true;
+    } catch (error) {
+      console.warn("Profilo inizializzato localmente; cloud non disponibile:", error);
+    }
 
     state = initialState;
     currentUser = user;
     sharedRecoveryCode = code;
-    lastSharedState = cloneState(state);
+    lastSharedState = cloudReady ? cloneState(state) : null;
     pendingProfileUser = null;
-    localStorage.setItem(STORAGE_KEY + ":" + user.uid, JSON.stringify(state));
-    localStorage.setItem(RECOVERY_CODE_KEY + ":" + user.uid, code);
+    try {
+      localStorage.setItem(STORAGE_KEY + ":" + user.uid, JSON.stringify(state));
+      localStorage.setItem(RECOVERY_CODE_KEY + ":" + user.uid, code);
+    } catch (e) { console.warn("Impossibile salvare il profilo localmente:", e); }
     document.getElementById("accountIdentity").textContent = "Archivio condiviso";
     document.getElementById("accountCode").textContent = "Codice personale: " + code;
     document.getElementById("authGate").hidden = true;
     document.getElementById("profileActions").hidden = true;
     document.getElementById("appShell").hidden = false;
-    await listenToSharedArchive(code, user);
-    setSyncStatus("Archivio condiviso sincronizzato");
+    try { await listenToSharedArchive(code, user); }
+    catch (error) { console.warn("Listener cloud non disponibile:", error); }
+    setSyncStatus(cloudReady ? "Archivio condiviso sincronizzato" : "Offline · dati locali, sincronizzazione in attesa");
     render();
+    if (!cloudReady) saveState();
   }
 
   async function loadUserData(user) {
@@ -398,89 +404,83 @@ const db = getFirestore(firebaseApp);
     document.getElementById("profileActions").hidden = true;
     document.getElementById("authRetry").hidden = false;
     setAuthMessage("Caricamento dell'archivio condiviso…");
+
+    const cached = stateFromStorage(STORAGE_KEY + ":" + user.uid);
+    const legacy = cached ? null : stateFromStorage(STORAGE_KEY);
+    const storedCode = localStorage.getItem(RECOVERY_CODE_KEY + ":" + user.uid);
+    let selectedState = cached || null;
+    let code = storedCode;
+    let remoteAvailable = false;
+
     try {
-      const userRef = doc(db, "users", user.uid);
-      const userSnapshot = await getDoc(userRef);
+      // Il documento users è solo per la migrazione: non deve bloccare l'avvio.
+      const userSnapshot = await getDoc(doc(db, "users", user.uid));
       if (token !== authLoadToken) return;
-
-      const storedCode = localStorage.getItem(RECOVERY_CODE_KEY + ":" + user.uid);
-      let selectedState = null;
-      let code = storedCode;
-
+      if (!selectedState && userSnapshot.exists() && isValidState(userSnapshot.data().appState)) {
+        selectedState = userSnapshot.data().appState;
+      }
       if (code) {
         const recoveryRef = await getRecoveryDocumentRef(code);
         const sharedSnapshot = await getDoc(recoveryRef);
         if (token !== authLoadToken) return;
         if (sharedSnapshot.exists() && isValidState(sharedSnapshot.data().appState)) {
           selectedState = sharedSnapshot.data().appState;
+          remoteAvailable = true;
         }
       }
-
-      // Migrazione dei profili già esistenti: viene eseguita solo se non
-      // è ancora disponibile un archivio condiviso associato al codice.
-      if (!selectedState && userSnapshot.exists() && isValidState(userSnapshot.data().appState)) {
-        selectedState = userSnapshot.data().appState;
-      }
-
-      if (!selectedState) {
-        const cached = stateFromStorage(STORAGE_KEY + ":" + user.uid);
-        const legacy = cached ? null : stateFromStorage(STORAGE_KEY);
-        if (cached) selectedState = cached;
-        else if (legacy && confirm("Ho trovato dati salvati in questo browser. Vuoi importarli nel tuo nuovo archivio condiviso?")) {
-          selectedState = legacy;
-        } else {
-          showProfileSetup(user, token);
-          return;
-        }
-      }
-
-      if (token !== authLoadToken) return;
-      code = code || getOrCreateRecoveryCode(user.uid);
-      const recoveryRef = await getRecoveryDocumentRef(code);
-      await runTransaction(db, async (transaction) => {
-        const existing = await transaction.get(recoveryRef);
-        if (existing.exists() && isValidState(existing.data().appState)) {
-          selectedState = existing.data().appState;
-        } else {
-          transaction.set(recoveryRef, {
-            ownerUid: user.uid,
-            appState: selectedState,
-            updatedAt: Date.now()
-          }, { merge: true });
-        }
-      });
-      if (token !== authLoadToken) return;
-
-      state = selectedState;
-      currentUser = user;
-      sharedRecoveryCode = code;
-      lastSharedState = cloneState(state);
-      pendingProfileUser = null;
-      localStorage.setItem(RECOVERY_CODE_KEY + ":" + user.uid, code);
-      try {
-        localStorage.setItem(STORAGE_KEY + ":" + user.uid, JSON.stringify(state));
-      } catch (e) {
-        console.warn("Impossibile salvare la copia locale:", e);
-      }
-      document.getElementById("accountIdentity").textContent = "Archivio condiviso";
-      document.getElementById("accountCode").textContent = "Codice personale: " + code;
-      authGate.hidden = true;
-      document.getElementById("profileActions").hidden = true;
-      appShell.hidden = false;
-      await listenToSharedArchive(code, user);
-      setSyncStatus("Archivio condiviso sincronizzato");
-      render();
     } catch (error) {
-      if (token !== authLoadToken) return;
-      console.error("Errore nel caricamento dell'archivio:", error);
-      currentUser = null;
-      sharedRecoveryCode = null;
-      authGate.hidden = false;
-      appShell.hidden = true;
-      document.getElementById("profileActions").hidden = true;
-      document.getElementById("authRetry").hidden = false;
-      setAuthMessage(authErrorMessage(error), true);
+      console.warn("Firebase non raggiungibile durante il caricamento; uso la copia locale:", error);
+      setSyncStatus("Offline · dati locali");
     }
+
+    if (!selectedState && legacy) {
+      if (confirm("Ho trovato dati salvati in questo browser. Vuoi importarli nel tuo archivio?")) selectedState = legacy;
+    }
+    if (!selectedState) {
+      showProfileSetup(user, token);
+      if (!navigator.onLine) setAuthMessage("Sei offline. Connettiti per creare o recuperare un archivio, oppure riprova se hai già dati locali.");
+      return;
+    }
+
+    if (token !== authLoadToken) return;
+    code = code || getOrCreateRecoveryCode(user.uid);
+    if (remoteAvailable) {
+      try {
+        const recoveryRef = await getRecoveryDocumentRef(code);
+        await runTransaction(db, async (transaction) => {
+          const existing = await transaction.get(recoveryRef);
+          if (existing.exists() && isValidState(existing.data().appState)) selectedState = existing.data().appState;
+          else transaction.set(recoveryRef, { ownerUid: user.uid, appState: selectedState, updatedAt: Date.now() }, { merge: true });
+        });
+      } catch (error) {
+        console.warn("Impossibile verificare/inizializzare l'archivio remoto; mantengo i dati locali:", error);
+        remoteAvailable = false;
+      }
+    }
+
+    if (token !== authLoadToken) return;
+    state = selectedState;
+    currentUser = user;
+    sharedRecoveryCode = code;
+    lastSharedState = remoteAvailable ? cloneState(selectedState) : (lastSharedState || null);
+    pendingProfileUser = null;
+    localStorage.setItem(RECOVERY_CODE_KEY + ":" + user.uid, code);
+    try { localStorage.setItem(STORAGE_KEY + ":" + user.uid, JSON.stringify(state)); }
+    catch (e) { console.warn("Impossibile salvare la copia locale:", e); }
+    document.getElementById("accountIdentity").textContent = "Archivio condiviso";
+    document.getElementById("accountCode").textContent = "Codice personale: " + code;
+    authGate.hidden = true;
+    document.getElementById("profileActions").hidden = true;
+    appShell.hidden = false;
+    try {
+      await listenToSharedArchive(code, user);
+      setSyncStatus(remoteAvailable ? "Archivio sincronizzato" : "Offline · dati locali, sincronizzazione in attesa");
+    } catch (error) {
+      console.warn("Listener cloud non disponibile; app in modalità locale:", error);
+      setSyncStatus("Offline · dati locali, sincronizzazione in attesa");
+    }
+    render();
+    if (!remoteAvailable) saveState();
   }
 
   async function initializeAuthentication() {
@@ -517,9 +517,14 @@ const db = getFirestore(firebaseApp);
       setAuthMessage("Ricerca del profilo tramite codice…");
       try {
         // Prima prova il recupero cloud con il solo codice.
-        let restored = await findRecoverySnapshot(code);
+        let restored = null;
+        try {
+          restored = await findRecoverySnapshot(code);
+        } catch (cloudError) {
+          console.warn("Recupero cloud non disponibile; provo il backup locale:", cloudError);
+        }
         if (!restored && file) {
-          setAuthMessage("Profilo cloud non trovato: provo il backup JSON…");
+          setAuthMessage("Profilo cloud non trovato o non raggiungibile: provo il backup JSON…");
           restored = await readBackupFile(file, code);
         }
         if (!restored) {
